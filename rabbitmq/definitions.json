@@ -1,0 +1,132 @@
+{
+  "users": [
+    {
+      "name": "guest",
+      "password_hash": "eOCL69oG3vpaIbycS/9j9c1LEXWpFQvlPtN9V4qXgb4iveS+",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": [
+        "administrator"
+      ]
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "guest",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "syner.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "syner.dlx",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "orders.saga-replies",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "syner.dlx",
+        "x-dead-letter-routing-key": "orders.saga-replies"
+      }
+    },
+    {
+      "name": "orders.saga-replies.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "products.purchase-orders",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "syner.dlx",
+        "x-dead-letter-routing-key": "products.purchase-orders"
+      }
+    },
+    {
+      "name": "products.purchase-orders.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "orders.saga-replies",
+      "destination_type": "queue",
+      "routing_key": "purchase-order.product.validated",
+      "arguments": {}
+    },
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "orders.saga-replies",
+      "destination_type": "queue",
+      "routing_key": "purchase-order.product.rejected",
+      "arguments": {}
+    },
+    {
+      "source": "syner.dlx",
+      "vhost": "/",
+      "destination": "orders.saga-replies.dlq",
+      "destination_type": "queue",
+      "routing_key": "orders.saga-replies",
+      "arguments": {}
+    },
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "products.purchase-orders",
+      "destination_type": "queue",
+      "routing_key": "purchase-order.created",
+      "arguments": {}
+    },
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "products.purchase-orders",
+      "destination_type": "queue",
+      "routing_key": "purchase-order.received",
+      "arguments": {}
+    },
+    {
+      "source": "syner.dlx",
+      "vhost": "/",
+      "destination": "products.purchase-orders.dlq",
+      "destination_type": "queue",
+      "routing_key": "products.purchase-orders",
+      "arguments": {}
+    }
+  ]
+}

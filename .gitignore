@@ -5,3 +5,4 @@ rabbitmq-data/
 .env
 
 node_modules/
+postgres-products/
