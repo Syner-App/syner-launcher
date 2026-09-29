@@ -1,0 +1,103 @@
+
+services:
+  orders-db:
+    container_name: orders_database
+    image: postgres:18.6-alpine3.24
+    restart: always
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres:/var/lib/postgresql
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=123456
+      - POSTGRES_DB=ordersdb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ordersdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    container_name: syner_rabbitmq
+    image: rabbitmq:4-management
+    # Fixed hostname: RabbitMQ stores its data under mnesia/rabbit@<hostname>,
+    # so a random container hostname would start from scratch on every recreate
+    hostname: syner-rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI (guest / guest)
+    volumes:
+      - ./rabbitmq-data:/var/lib/rabbitmq
+      # Declarative topology: guest user, exchanges, work queues, DLX and DLQs
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/10-definitions.conf:ro
+      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # Microservices run in development mode: src/ is bind-mounted and
+  # `nest start --watch` recompiles on every change. The environment below
+  # overrides each service's .env (dotenv never overwrites existing variables).
+
+  products-ms:
+    container_name: syner_products_ms
+    init: true # forwards stop signals and reaps the watcher's child processes
+    build: ./products-ms
+    restart: unless-stopped
+    command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && exec pnpm start:dev"
+    volumes:
+      - ./products-ms/src:/app/src
+      - ./products-ms/prisma:/app/prisma
+      - ./products-ms/data:/app/data # SQLite database
+    environment:
+      - PORT=3001
+      - DATABASE_URL=file:./data/dev.db
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  order-ms:
+    container_name: syner_order_ms
+    init: true # forwards stop signals and reaps the watcher's child processes
+    build: ./order-ms
+    restart: unless-stopped
+    command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && exec pnpm start:dev"
+    volumes:
+      - ./order-ms/src:/app/src
+      - ./order-ms/prisma:/app/prisma
+    environment:
+      - PORT=3002
+      - DATABASE_URL=postgresql://postgres:123456@orders-db:5432/ordersdb?schema=public
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      orders-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # The only service published to the host: the microservices (3001, 3002)
+  # are reachable only inside the Docker network
+  client-gateway:
+    container_name: syner_client_gateway
+    init: true # forwards stop signals and reaps the watcher's child processes
+    build: ./client-gateway
+    restart: unless-stopped
+    ports:
+      - ${CLIENT_GATEWAY_PORT}:3000
+    volumes:
+      - ./client-gateway/src:/app/src
+    environment:
+      - PORT=3000
+      - PRODUCTS_MICROSERVICE_HOST=products-ms
+      - PRODUCTS_MICROSERVICE_PORT=3001
+      - ORDERS_MICROSERVICE_HOST=order-ms
+      - ORDERS_MICROSERVICE_PORT=3002
+    depends_on:
+      - products-ms
+      - order-ms

@@ -1,0 +1,7 @@
+postgres/
+rabbitmq-data/
+.DS_Store
+
+.env
+
+node_modules/
