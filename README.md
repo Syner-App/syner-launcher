@@ -6,15 +6,15 @@ Microservicios NestJS:
 | --- | --- | --- | --- |
 | [`client-gateway`](client-gateway) | 3000 (HTTP, `/api`), el único publicado | gRPC hacia los microservicios | — |
 | [`products-ms`](products-ms) | 3001 (gRPC, solo red interna de Docker) | gRPC + RabbitMQ | SQLite (`products-ms/data/dev.db`) |
-| [`order-ms`](order-ms) | 3002 (gRPC, solo red interna de Docker) | gRPC + RabbitMQ | PostgreSQL |
+| [`orders-ms`](orders-ms) | 3002 (gRPC, solo red interna de Docker) | gRPC + RabbitMQ | PostgreSQL |
 
-`order-ms` y `products-ms` no se llaman entre sí. La creación de órdenes es una **saga asíncrona** sobre RabbitMQ (exchange topic `syner.events`):
+`orders-ms` y `products-ms` no se llaman entre sí. La creación de órdenes es una **saga asíncrona** sobre RabbitMQ (exchange topic `syner.events`):
 
 ```
-gateway ─POST /api/orders─▶ order-ms ── 202 AWAITING_VALIDATION
-order-ms ──order.created (outbox)──▶ products-ms
-products-ms ──order.products.validated | order.products.rejected──▶ order-ms
-order-ms: PENDING (con precios) | REJECTED (con motivo) | REJECTED por timeout
+gateway ─POST /api/orders─▶ orders-ms ── 202 AWAITING_VALIDATION
+orders-ms ──order.created (outbox)──▶ products-ms
+products-ms ──order.products.validated | order.products.rejected──▶ orders-ms
+orders-ms: PENDING (con precios) | REJECTED (con motivo) | REJECTED por timeout
 ```
 
 ## Infraestructura
@@ -25,7 +25,7 @@ order-ms: PENDING (con precios) | REJECTED (con motivo) | REJECTED por timeout
 - **RabbitMQ** (`syner_rabbitmq`, AMQP :5672, UI http://localhost:15672 con `guest`/`guest`, datos en `./rabbitmq-data`). Tiene `hostname` fijo porque RabbitMQ guarda sus datos en `mnesia/rabbit@<hostname>`.
 - Los tres servicios NestJS.
 
-Postgres y RabbitMQ tienen healthchecks; order-ms y products-ms esperan a que estén `healthy`.
+Postgres y RabbitMQ tienen healthchecks; orders-ms y products-ms esperan a que estén `healthy`.
 
 La topología de RabbitMQ está en [`rabbitmq/definitions.json`](rabbitmq/definitions.json) y se carga en cada arranque:
 
@@ -41,7 +41,7 @@ Las colas de trabajo se declaran en el broker, y no solo en cada servicio, para 
 ```bash
 docker compose up -d --build     # la primera vez, o si cambian package.json / Dockerfile
 docker compose up -d             # las siguientes
-docker compose logs -f order-ms  # logs de un servicio
+docker compose logs -f orders-ms  # logs de un servicio
 docker compose down              # detener (los datos quedan en ./postgres, ./rabbitmq-data y products-ms/data)
 ```
 
@@ -49,10 +49,10 @@ Los servicios corren en **modo desarrollo**:
 
 - Se montan `src/` (y `prisma/`) de cada servicio, y `nest start --watch` recompila y reinicia al guardar un archivo.
 - `node_modules` vive solo dentro de la imagen, porque las dependencias nativas (`better-sqlite3`, `grpc-tools`) deben compilarse para Linux. Si agregas una dependencia, reconstruye con `--build`.
-- Al arrancar, order-ms y products-ms ejecutan `prisma generate` y `prisma migrate deploy`. Para crear una migración, córrela en tu máquina (`pnpm prisma migrate dev`) y reinicia el contenedor.
-- Las variables de `environment:` en `docker-compose.yml` apuntan a los nombres de servicio (`orders-db`, `rabbitmq`, `order-ms`, `products-ms`) y tienen prioridad sobre el `.env` de cada servicio. Los `.env` siguen apuntando a `localhost`.
+- Al arrancar, orders-ms y products-ms ejecutan `prisma generate` y `prisma migrate deploy`. Para crear una migración, córrela en tu máquina (`pnpm prisma migrate dev`) y reinicia el contenedor.
+- Las variables de `environment:` en `docker-compose.yml` apuntan a los nombres de servicio (`orders-db`, `rabbitmq`, `orders-ms`, `products-ms`) y tienen prioridad sobre el `.env` de cada servicio. Los `.env` siguen apuntando a `localhost`.
 
-Para depurar un servicio fuera de Docker, detén su contenedor (`docker compose stop order-ms`) y córrelo local con `pnpm start:dev`: usa Postgres y RabbitMQ por sus puertos publicados. El gateway en Docker no ve un servicio corriendo en tu máquina, así que en ese caso corre también el gateway local.
+Para depurar un servicio fuera de Docker, detén su contenedor (`docker compose stop orders-ms`) y córrelo local con `pnpm start:dev`: usa Postgres y RabbitMQ por sus puertos publicados. El gateway en Docker no ve un servicio corriendo en tu máquina, así que en ese caso corre también el gateway local.
 
 ## Mensajes fallidos (DLQ)
 
