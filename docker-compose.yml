@@ -62,15 +62,15 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  order-ms:
+  orders-ms:
     container_name: syner_order_ms
     init: true # forwards stop signals and reaps the watcher's child processes
-    build: ./order-ms
+    build: ./orders-ms
     restart: unless-stopped
     command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && exec pnpm start:dev"
     volumes:
-      - ./order-ms/src:/app/src
-      - ./order-ms/prisma:/app/prisma
+      - ./orders-ms/src:/app/src
+      - ./orders-ms/prisma:/app/prisma
     environment:
       - PORT=3002
       - DATABASE_URL=postgresql://postgres:123456@orders-db:5432/ordersdb?schema=public
