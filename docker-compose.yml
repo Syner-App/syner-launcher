@@ -130,15 +130,21 @@ services:
     init: true # forwards stop signals and reaps the watcher's child processes
     build: ./auth-ms
     restart: unless-stopped
-    # contract emit regenerates src/prisma/contract.{json,d.ts}; db init creates the
-    # users collection and its unique email index (idempotent, safe on every start)
-    command: sh -c "pnpm prisma contract emit && pnpm prisma db init && exec pnpm start:dev"
+    # contract emit regenerates src/prisma/contract.{json,d.ts}; db update applies the
+    # contract to the database (creates the users collection, its unique email index and
+    # validator, or evolves them). --no-interactive: a destructive change fails the start
+    # instead of prompting (it needs an explicit --confirm authdb)
+    command: sh -c "pnpm prisma contract emit && pnpm prisma db update --no-interactive && exec pnpm start:dev"
     volumes:
       - ./auth-ms/src:/app/src
     environment:
       - PORT=3003
       - DATABASE_URL=mongodb://auth-db:27017/authdb?replicaSet=rs0&directConnection=true
       - JWT_SECRET=${JWT_SECRET}
+      # Initial owner, created on startup if no user has OWNER_EMAIL
+      - OWNER_NAME=${OWNER_NAME}
+      - OWNER_EMAIL=${OWNER_EMAIL}
+      - OWNER_PASSWORD=${OWNER_PASSWORD}
     depends_on:
       auth-db:
         condition: service_healthy

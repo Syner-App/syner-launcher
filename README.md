@@ -9,7 +9,17 @@ Microservicios NestJS:
 | [`orders-ms`](orders-ms) | 3002 (gRPC, solo red interna de Docker) | gRPC + RabbitMQ | PostgreSQL (`orders-db`) |
 | [`auth-ms`](auth-ms) | 3003 (gRPC, solo red interna de Docker) | gRPC | MongoDB (`auth-db`) con Prisma 8 |
 
-`auth-ms` maneja los usuarios y la autenticación con JWT: `POST /api/auth/register`, `POST /api/auth/login` y `GET /api/auth/verify` (header `Authorization: Bearer <token>`, devuelve el usuario y un token renovado).
+`auth-ms` maneja los usuarios, la autenticación con JWT y los roles: `POST /api/auth/login` (público), `POST /api/auth/register`, `GET /api/auth/verify` (devuelve el usuario y un token renovado) y `PATCH /api/auth/users/:id/role` (`{ "role": "admin" }`). Todas las rutas salvo login requieren el header `Authorization: Bearer <token>`.
+
+Roles:
+
+| Rol | Permisos |
+|---|---|
+| `owner` | Todo el sistema. Es el único que cambia roles (no el suyo propio) y puede registrar usuarios de cualquier rol |
+| `admin` | Todo sobre productos, alertas y órdenes de compra (crear, editar, eliminar, cambiar estado). Solo registra usuarios `user` |
+| `user` | Solo lectura de productos, alertas y órdenes de compra, más movimientos de stock (`POST /api/products/:id/stock`) |
+
+El primer `owner` lo crea auth-ms al arrancar con `OWNER_NAME`, `OWNER_EMAIL` y `OWNER_PASSWORD` del `.env` (si ya existe un usuario con ese email no lo toca). El rol se relee de la base en cada request, así que un cambio de rol aplica de inmediato. Sin token la respuesta es 401; con un rol sin permiso, 403.
 
 `products-ms` maneja el inventario: productos, historial de movimientos y alertas de stock bajo. `orders-ms` maneja las órdenes de compra. No se llaman entre sí: las órdenes de compra son una **saga asíncrona** sobre RabbitMQ (exchange topic `syner.events`):
 
@@ -58,7 +68,7 @@ Los servicios corren en **modo desarrollo**:
 
 - Se montan `src/` (y `prisma/`) de cada servicio, y `nest start --watch` recompila y reinicia al guardar un archivo.
 - `node_modules` vive solo dentro de la imagen, porque las dependencias nativas (`grpc-tools`, `esbuild`) deben compilarse para Linux. Si agregas una dependencia, reconstruye con `--build`.
-- Al arrancar, orders-ms y products-ms ejecutan `prisma generate` y `prisma migrate deploy`. products-ms además corre `prisma db seed`, que carga los productos iniciales sin tocar los existentes. auth-ms ejecuta `prisma contract emit` y `prisma db init` (crea la colección `users` y el índice único de `email`). Para crear una migración, córrela en tu máquina (`pnpm prisma migrate dev`) y reinicia el contenedor.
+- Al arrancar, orders-ms y products-ms ejecutan `prisma generate` y `prisma migrate deploy`. products-ms además corre `prisma db seed`, que carga los productos iniciales sin tocar los existentes. auth-ms ejecuta `prisma contract emit` y `prisma db update --no-interactive` (crea o actualiza la colección `users`, su validador y el índice único de `email`; un cambio destructivo hace fallar el arranque en vez de aplicarse). Para crear una migración, córrela en tu máquina (`pnpm prisma migrate dev`) y reinicia el contenedor.
 - Las variables de `environment:` en `docker-compose.yml` apuntan a los nombres de servicio (`orders-db`, `products-db`, `auth-db`, `rabbitmq`, `orders-ms`, `products-ms`, `auth-ms`) y tienen prioridad sobre el `.env` de cada servicio. Los `.env` siguen apuntando a `localhost`.
 
 Para depurar un servicio fuera de Docker, detén su contenedor (`docker compose stop orders-ms`) y córrelo local con `pnpm start:dev`: usa Postgres y RabbitMQ por sus puertos publicados. El gateway en Docker no ve un servicio corriendo en tu máquina, así que en ese caso corre también el gateway local.
@@ -75,7 +85,7 @@ Si cambias los argumentos de una cola (por ejemplo, el DLX), bórrala desde la U
 ## Dev
 
 1. Clonar el repositorio
-2. Crear un .env basado en el .env.template (incluye `JWT_SECRET`, que firma los tokens de auth-ms)
+2. Crear un .env basado en el .env.template (incluye `JWT_SECRET`, que firma los tokens de auth-ms, y las credenciales `OWNER_*` del owner inicial)
 3. Ejecutar el comando `git submodule update --init --recursive` para reconstruir los sub-módulos
 4. Ejecutar el comando `docker compose up --build`
 
