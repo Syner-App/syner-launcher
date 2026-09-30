@@ -82,61 +82,104 @@ services:
       retries: 10
       start_period: 20s
 
-  # Microservices run in development mode: src/ is bind-mounted and
-  # `nest start --watch` recompiles on every change. The environment below
-  # overrides each service's .env (dotenv never overwrites existing variables).
+  # Microservices run from their production images (Dockerfile.prod): compiled
+  # dist/ plus production dependencies, no bind mounts and no watcher. Database
+  # changes run first as one-off jobs (*-migrate, the `migrate` target of the same
+  # Dockerfile.prod, which still has the Prisma CLI); each service starts only
+  # after its job exits successfully. The environment below overrides each
+  # service's .env (dotenv never overwrites existing variables).
+
+  products-migrate:
+    container_name: syner_products_migrate
+    build:
+      context: ./products-ms
+      dockerfile: Dockerfile.prod
+      target: migrate
+    image: products-ms-migrate
+    restart: "no"
+    # migrate deploy + seed (upserts by codigo_sku, safe to run on every start)
+    environment:
+      - DATABASE_URL=postgresql://${PRODUCTS_DB_USER}:${PRODUCTS_DB_PASSWORD}@products-db:5432/${PRODUCTS_DB_NAME}?schema=public
+    depends_on:
+      products-db:
+        condition: service_healthy
 
   products-ms:
     container_name: syner_products_ms
-    init: true # forwards stop signals and reaps the watcher's child processes
-    build: ./products-ms
+    init: true # forwards stop signals to the Node process
+    build:
+      context: ./products-ms
+      dockerfile: Dockerfile.prod
+    image: products-ms
     restart: unless-stopped
-    # The seed upserts by codigo_sku, so it is safe to run on every start
-    command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && pnpm prisma db seed && exec pnpm start:dev"
-    volumes:
-      - ./products-ms/src:/app/src
-      - ./products-ms/prisma:/app/prisma
     environment:
       - PORT=${PRODUCTS_MS_PORT}
       - DATABASE_URL=postgresql://${PRODUCTS_DB_USER}:${PRODUCTS_DB_PASSWORD}@products-db:5432/${PRODUCTS_DB_NAME}?schema=public
       - RABBITMQ_URL=${RABBITMQ_URL}
     depends_on:
-      products-db:
-        condition: service_healthy
+      products-migrate:
+        condition: service_completed_successfully
       rabbitmq:
+        condition: service_healthy
+
+  orders-migrate:
+    container_name: syner_orders_migrate
+    build:
+      context: ./orders-ms
+      dockerfile: Dockerfile.prod
+      target: migrate
+    image: orders-ms-migrate
+    restart: "no"
+    environment:
+      - DATABASE_URL=postgresql://${ORDERS_DB_USER}:${ORDERS_DB_PASSWORD}@orders-db:5432/${ORDERS_DB_NAME}?schema=public
+    depends_on:
+      orders-db:
         condition: service_healthy
 
   orders-ms:
     container_name: syner_order_ms
-    init: true # forwards stop signals and reaps the watcher's child processes
-    build: ./orders-ms
+    init: true # forwards stop signals to the Node process
+    build:
+      context: ./orders-ms
+      dockerfile: Dockerfile.prod
+    image: orders-ms
     restart: unless-stopped
-    command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && exec pnpm start:dev"
-    volumes:
-      - ./orders-ms/src:/app/src
-      - ./orders-ms/prisma:/app/prisma
     environment:
       - PORT=${ORDERS_MS_PORT}
       - DATABASE_URL=postgresql://${ORDERS_DB_USER}:${ORDERS_DB_PASSWORD}@orders-db:5432/${ORDERS_DB_NAME}?schema=public
       - RABBITMQ_URL=${RABBITMQ_URL}
     depends_on:
-      orders-db:
-        condition: service_healthy
+      orders-migrate:
+        condition: service_completed_successfully
       rabbitmq:
+        condition: service_healthy
+
+  # db update applies the committed Prisma contract to the database (creates the
+  # users collection, its unique email index and validator, or evolves them).
+  # --no-interactive: a destructive change fails the job instead of prompting
+  # (it needs an explicit --confirm authdb)
+  auth-migrate:
+    container_name: syner_auth_migrate
+    build:
+      context: ./auth-ms
+      dockerfile: Dockerfile.prod
+      target: migrate
+    image: auth-ms-migrate
+    restart: "no"
+    environment:
+      - DATABASE_URL=${AUTH_DATABASE_URL}
+    depends_on:
+      auth-db:
         condition: service_healthy
 
   auth-ms:
     container_name: syner_auth_ms
-    init: true # forwards stop signals and reaps the watcher's child processes
-    build: ./auth-ms
+    init: true # forwards stop signals to the Node process
+    build:
+      context: ./auth-ms
+      dockerfile: Dockerfile.prod
+    image: auth-ms
     restart: unless-stopped
-    # contract emit regenerates src/prisma/contract.{json,d.ts}; db update applies the
-    # contract to the database (creates the users collection, its unique email index and
-    # validator, or evolves them). --no-interactive: a destructive change fails the start
-    # instead of prompting (it needs an explicit --confirm authdb)
-    command: sh -c "pnpm prisma contract emit && pnpm prisma db update --no-interactive && exec pnpm start:dev"
-    volumes:
-      - ./auth-ms/src:/app/src
     environment:
       - PORT=${AUTH_MS_PORT}
       - DATABASE_URL=${AUTH_DATABASE_URL}
@@ -146,20 +189,21 @@ services:
       - OWNER_EMAIL=${OWNER_EMAIL}
       - OWNER_PASSWORD=${OWNER_PASSWORD}
     depends_on:
-      auth-db:
-        condition: service_healthy
+      auth-migrate:
+        condition: service_completed_successfully
 
   # The only service published to the host: the microservices (3001, 3002, 3003)
   # are reachable only inside the Docker network
   client-gateway:
     container_name: syner_client_gateway
-    init: true # forwards stop signals and reaps the watcher's child processes
-    build: ./client-gateway
+    init: true # forwards stop signals to the Node process
+    build:
+      context: ./client-gateway
+      dockerfile: Dockerfile.prod
+    image: client-gateway
     restart: unless-stopped
     ports:
       - ${CLIENT_GATEWAY_PORT}:3000
-    volumes:
-      - ./client-gateway/src:/app/src
     environment:
       - PORT=3000
       - PRODUCTS_MICROSERVICE_HOST=${PRODUCTS_MS_HOST}

@@ -71,7 +71,32 @@ Los servicios corren en **modo desarrollo**:
 - Al arrancar, orders-ms y products-ms ejecutan `prisma generate` y `prisma migrate deploy`. products-ms además corre `prisma db seed`, que carga los productos iniciales sin tocar los existentes. auth-ms ejecuta `prisma contract emit` y `prisma db update --no-interactive` (crea o actualiza la colección `users`, su validador y el índice único de `email`; un cambio destructivo hace fallar el arranque en vez de aplicarse). Para crear una migración, córrela en tu máquina (`pnpm prisma migrate dev`) y reinicia el contenedor.
 - Las variables de `environment:` en `docker-compose.yml` apuntan a los nombres de servicio (`orders-db`, `products-db`, `auth-db`, `rabbitmq`, `orders-ms`, `products-ms`, `auth-ms`) y tienen prioridad sobre el `.env` de cada servicio. Los `.env` siguen apuntando a `localhost`.
 
+Todos los valores de `environment:` de `docker-compose.yml` y `docker-compose.prod.yml` salen del `.env` de la raíz (ver `.env.template`): puertos y hosts de los microservicios, credenciales de los Postgres (el `DATABASE_URL` de products-ms y orders-ms se arma con ellas), `AUTH_DATABASE_URL`, `RABBITMQ_URL`, `JWT_SECRET` y el owner inicial. Los hosts son los nombres de servicio del compose, así que si renombras un servicio cambia también su `*_MS_HOST`.
+
 Para depurar un servicio fuera de Docker, detén su contenedor (`docker compose stop orders-ms`) y córrelo local con `pnpm start:dev`: usa Postgres y RabbitMQ por sus puertos publicados. El gateway en Docker no ve un servicio corriendo en tu máquina, así que en ese caso corre también el gateway local.
+
+## Producción
+
+`docker-compose.prod.yml` usa el `Dockerfile.prod` de cada servicio: imagen con `dist/` compilado y solo las dependencias de producción, sin montar `src/` ni watcher. El build corre los tests del servicio y falla si alguno falla.
+
+Los cambios de base de datos corren antes como jobs de una sola ejecución, construidos con el target `migrate` del mismo `Dockerfile.prod` (que conserva el CLI de Prisma): `products-migrate` (`migrate deploy` + seed), `orders-migrate` (`migrate deploy`) y `auth-migrate` (`db update --no-interactive`). Cada microservicio arranca solo cuando su job termina bien.
+
+**Construye las imágenes servicio por servicio**, no todas a la vez:
+
+```bash
+docker compose -f docker-compose.prod.yml build auth-migrate
+docker compose -f docker-compose.prod.yml build auth-ms
+docker compose -f docker-compose.prod.yml build products-migrate
+docker compose -f docker-compose.prod.yml build products-ms
+docker compose -f docker-compose.prod.yml build orders-migrate
+docker compose -f docker-compose.prod.yml build orders-ms
+docker compose -f docker-compose.prod.yml build client-gateway
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Si lanzas todo a la vez (`docker compose -f docker-compose.prod.yml build`), los `pnpm install` en paralelo saturan el registro de npm y pnpm falla con `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` (`could not be checked against minimumReleaseAge (The operation was aborted due to timeout)`). Son timeouts contra el registro, no un error de los Dockerfiles ni del lockfile: vuelve a construir servicio por servicio.
+
+El stack de producción usa los mismos nombres de contenedor y puertos que el de desarrollo, así que no pueden correr a la vez: `docker compose -f docker-compose.prod.yml up -d` reemplaza los contenedores de desarrollo (los datos se conservan), y `docker compose up -d --build` vuelve a desarrollo.
 
 ## Mensajes fallidos (DLQ)
 
@@ -85,7 +110,7 @@ Si cambias los argumentos de una cola (por ejemplo, el DLX), bórrala desde la U
 ## Dev
 
 1. Clonar el repositorio
-2. Crear un .env basado en el .env.template (incluye `JWT_SECRET`, que firma los tokens de auth-ms, y las credenciales `OWNER_*` del owner inicial)
+2. Crear un .env basado en el .env.template (incluye las credenciales de los Postgres, `JWT_SECRET`, que firma los tokens de auth-ms, y las credenciales `OWNER_*` del owner inicial). Si ya tienes datos en `./postgres` o `./postgres-products`, usa las credenciales con las que se crearon (`postgres` / `123456`): Postgres solo las aplica al inicializar una base vacía
 3. Ejecutar el comando `git submodule update --init --recursive` para reconstruir los sub-módulos
 4. Ejecutar el comando `docker compose up --build`
 
