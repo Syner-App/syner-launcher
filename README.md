@@ -7,6 +7,9 @@ Microservicios NestJS:
 | [`client-gateway`](client-gateway) | 3000 (HTTP, `/api`), el único publicado | gRPC hacia los microservicios | — |
 | [`products-ms`](products-ms) | 3001 (gRPC, solo red interna de Docker) | gRPC + RabbitMQ | PostgreSQL (`products-db`) |
 | [`orders-ms`](orders-ms) | 3002 (gRPC, solo red interna de Docker) | gRPC + RabbitMQ | PostgreSQL (`orders-db`) |
+| [`auth-ms`](auth-ms) | 3003 (gRPC, solo red interna de Docker) | gRPC | MongoDB (`auth-db`) con Prisma 8 |
+
+`auth-ms` maneja los usuarios y la autenticación con JWT: `POST /api/auth/register`, `POST /api/auth/login` y `GET /api/auth/verify` (header `Authorization: Bearer <token>`, devuelve el usuario y un token renovado).
 
 `products-ms` maneja el inventario: productos, historial de movimientos y alertas de stock bajo. `orders-ms` maneja las órdenes de compra. No se llaman entre sí: las órdenes de compra son una **saga asíncrona** sobre RabbitMQ (exchange topic `syner.events`):
 
@@ -27,10 +30,11 @@ orders-ms ──purchase-order.received (outbox)──▶ products-ms: entrada d
 
 - **Postgres de órdenes** (`orders_database`, :5432, datos en `./postgres`).
 - **Postgres de productos** (`products_database`, :5433, datos en `./postgres-products`).
+- **MongoDB de auth** (`auth_database`, :27017, datos en `./mongo`). Corre como replica set de un nodo (`rs0`); el healthcheck lo inicializa en el primer arranque. Prisma 8 exige MongoDB >= 8.0.
 - **RabbitMQ** (`syner_rabbitmq`, AMQP :5672, UI http://localhost:15672 con `guest`/`guest`, datos en `./rabbitmq-data`). Tiene `hostname` fijo porque RabbitMQ guarda sus datos en `mnesia/rabbit@<hostname>`.
 - Los tres servicios NestJS.
 
-Los Postgres y RabbitMQ tienen healthchecks; orders-ms y products-ms esperan a que estén `healthy`.
+Los Postgres, MongoDB y RabbitMQ tienen healthchecks; orders-ms, products-ms y auth-ms esperan a que estén `healthy`.
 
 La topología de RabbitMQ está en [`rabbitmq/definitions.json`](rabbitmq/definitions.json) y se carga en cada arranque:
 
@@ -47,15 +51,15 @@ Las colas de trabajo se declaran en el broker, y no solo en cada servicio, para 
 docker compose up -d --build     # la primera vez, o si cambian package.json / Dockerfile
 docker compose up -d             # las siguientes
 docker compose logs -f orders-ms  # logs de un servicio
-docker compose down              # detener (los datos quedan en ./postgres, ./postgres-products y ./rabbitmq-data)
+docker compose down              # detener (los datos quedan en ./postgres, ./postgres-products, ./mongo y ./rabbitmq-data)
 ```
 
 Los servicios corren en **modo desarrollo**:
 
 - Se montan `src/` (y `prisma/`) de cada servicio, y `nest start --watch` recompila y reinicia al guardar un archivo.
 - `node_modules` vive solo dentro de la imagen, porque las dependencias nativas (`grpc-tools`, `esbuild`) deben compilarse para Linux. Si agregas una dependencia, reconstruye con `--build`.
-- Al arrancar, orders-ms y products-ms ejecutan `prisma generate` y `prisma migrate deploy`. products-ms además corre `prisma db seed`, que carga los productos iniciales sin tocar los existentes. Para crear una migración, córrela en tu máquina (`pnpm prisma migrate dev`) y reinicia el contenedor.
-- Las variables de `environment:` en `docker-compose.yml` apuntan a los nombres de servicio (`orders-db`, `products-db`, `rabbitmq`, `orders-ms`, `products-ms`) y tienen prioridad sobre el `.env` de cada servicio. Los `.env` siguen apuntando a `localhost`.
+- Al arrancar, orders-ms y products-ms ejecutan `prisma generate` y `prisma migrate deploy`. products-ms además corre `prisma db seed`, que carga los productos iniciales sin tocar los existentes. auth-ms ejecuta `prisma contract emit` y `prisma db init` (crea la colección `users` y el índice único de `email`). Para crear una migración, córrela en tu máquina (`pnpm prisma migrate dev`) y reinicia el contenedor.
+- Las variables de `environment:` en `docker-compose.yml` apuntan a los nombres de servicio (`orders-db`, `products-db`, `auth-db`, `rabbitmq`, `orders-ms`, `products-ms`, `auth-ms`) y tienen prioridad sobre el `.env` de cada servicio. Los `.env` siguen apuntando a `localhost`.
 
 Para depurar un servicio fuera de Docker, detén su contenedor (`docker compose stop orders-ms`) y córrelo local con `pnpm start:dev`: usa Postgres y RabbitMQ por sus puertos publicados. El gateway en Docker no ve un servicio corriendo en tu máquina, así que en ese caso corre también el gateway local.
 
@@ -71,7 +75,7 @@ Si cambias los argumentos de una cola (por ejemplo, el DLX), bórrala desde la U
 ## Dev
 
 1. Clonar el repositorio
-2. Crear un .env basado en el .env.template
+2. Crear un .env basado en el .env.template (incluye `JWT_SECRET`, que firma los tokens de auth-ms)
 3. Ejecutar el comando `git submodule update --init --recursive` para reconstruir los sub-módulos
 4. Ejecutar el comando `docker compose up --build`
 

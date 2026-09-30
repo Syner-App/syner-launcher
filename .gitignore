@@ -6,3 +6,4 @@ rabbitmq-data/
 
 node_modules/
 postgres-products/
+mongo/
