@@ -8,10 +8,14 @@ services:
       - "5432:5432"
     volumes:
       - ./postgres:/var/lib/postgresql
+      # Creates the app role (orders-ms connects with it, so RLS applies) on first init
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     environment:
       - POSTGRES_USER=${ORDERS_DB_USER}
       - POSTGRES_PASSWORD=${ORDERS_DB_PASSWORD}
       - POSTGRES_DB=${ORDERS_DB_NAME}
+      - APP_DB_USER=${ORDERS_DB_APP_USER}
+      - APP_DB_PASSWORD=${ORDERS_DB_APP_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -26,10 +30,14 @@ services:
       - "5433:5432"
     volumes:
       - ./postgres-products:/var/lib/postgresql
+      # Creates the app role (products-ms connects with it, so RLS applies) on first init
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     environment:
       - POSTGRES_USER=${PRODUCTS_DB_USER}
       - POSTGRES_PASSWORD=${PRODUCTS_DB_PASSWORD}
       - POSTGRES_DB=${PRODUCTS_DB_NAME}
+      - APP_DB_USER=${PRODUCTS_DB_APP_USER}
+      - APP_DB_PASSWORD=${PRODUCTS_DB_APP_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -91,14 +99,17 @@ services:
     init: true # forwards stop signals and reaps the watcher's child processes
     build: ./products-ms
     restart: unless-stopped
-    # The seed upserts by codigo_sku, so it is safe to run on every start
-    command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && pnpm prisma db seed && exec pnpm start:dev"
+    # migrate deploy runs as the table owner (MIGRATE_DATABASE_URL); the service connects
+    # with the app role (DATABASE_URL), subject to RLS. New organizations start empty: the
+    # demo catalog is loaded by hand (SEED_ORGANIZATION_ID, see README)
+    command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && exec pnpm start:dev"
     volumes:
       - ./products-ms/src:/app/src
       - ./products-ms/prisma:/app/prisma
     environment:
       - PORT=${PRODUCTS_MS_PORT}
-      - DATABASE_URL=postgresql://${PRODUCTS_DB_USER}:${PRODUCTS_DB_PASSWORD}@products-db:5432/${PRODUCTS_DB_NAME}?schema=public
+      - DATABASE_URL=postgresql://${PRODUCTS_DB_APP_USER}:${PRODUCTS_DB_APP_PASSWORD}@products-db:5432/${PRODUCTS_DB_NAME}?schema=public
+      - MIGRATE_DATABASE_URL=postgresql://${PRODUCTS_DB_USER}:${PRODUCTS_DB_PASSWORD}@products-db:5432/${PRODUCTS_DB_NAME}?schema=public
       - RABBITMQ_URL=${RABBITMQ_URL}
     depends_on:
       products-db:
@@ -111,13 +122,16 @@ services:
     init: true # forwards stop signals and reaps the watcher's child processes
     build: ./orders-ms
     restart: unless-stopped
+    # migrate deploy runs as the table owner (MIGRATE_DATABASE_URL); the service connects
+    # with the app role (DATABASE_URL), subject to RLS
     command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && exec pnpm start:dev"
     volumes:
       - ./orders-ms/src:/app/src
       - ./orders-ms/prisma:/app/prisma
     environment:
       - PORT=${ORDERS_MS_PORT}
-      - DATABASE_URL=postgresql://${ORDERS_DB_USER}:${ORDERS_DB_PASSWORD}@orders-db:5432/${ORDERS_DB_NAME}?schema=public
+      - DATABASE_URL=postgresql://${ORDERS_DB_APP_USER}:${ORDERS_DB_APP_PASSWORD}@orders-db:5432/${ORDERS_DB_NAME}?schema=public
+      - MIGRATE_DATABASE_URL=postgresql://${ORDERS_DB_USER}:${ORDERS_DB_PASSWORD}@orders-db:5432/${ORDERS_DB_NAME}?schema=public
       - RABBITMQ_URL=${RABBITMQ_URL}
     depends_on:
       orders-db:
@@ -131,9 +145,9 @@ services:
     build: ./auth-ms
     restart: unless-stopped
     # contract emit regenerates src/prisma/contract.{json,d.ts}; db update applies the
-    # contract to the database (creates the users collection, its unique email index and
-    # validator, or evolves them). --no-interactive: a destructive change fails the start
-    # instead of prompting (it needs an explicit --confirm authdb)
+    # contract to the database (creates the users, organizations and memberships collections,
+    # their unique indexes and validators, or evolves them). --no-interactive: a destructive
+    # change fails the start instead of prompting (it needs an explicit --confirm authdb)
     command: sh -c "pnpm prisma contract emit && pnpm prisma db update --no-interactive && exec pnpm start:dev"
     volumes:
       - ./auth-ms/src:/app/src
@@ -141,10 +155,10 @@ services:
       - PORT=${AUTH_MS_PORT}
       - DATABASE_URL=${AUTH_DATABASE_URL}
       - JWT_SECRET=${JWT_SECRET}
-      # Initial owner, created on startup if no user has OWNER_EMAIL
-      - OWNER_NAME=${OWNER_NAME}
-      - OWNER_EMAIL=${OWNER_EMAIL}
-      - OWNER_PASSWORD=${OWNER_PASSWORD}
+      # Platform superadmin, created on startup if no user has SUPERADMIN_EMAIL
+      - SUPERADMIN_NAME=${SUPERADMIN_NAME}
+      - SUPERADMIN_EMAIL=${SUPERADMIN_EMAIL}
+      - SUPERADMIN_PASSWORD=${SUPERADMIN_PASSWORD}
     depends_on:
       auth-db:
         condition: service_healthy

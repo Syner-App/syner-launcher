@@ -8,10 +8,14 @@ services:
       - "5432:5432"
     volumes:
       - ./postgres:/var/lib/postgresql
+      # Creates the app role (orders-ms connects with it, so RLS applies) on first init
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     environment:
       - POSTGRES_USER=${ORDERS_DB_USER}
       - POSTGRES_PASSWORD=${ORDERS_DB_PASSWORD}
       - POSTGRES_DB=${ORDERS_DB_NAME}
+      - APP_DB_USER=${ORDERS_DB_APP_USER}
+      - APP_DB_PASSWORD=${ORDERS_DB_APP_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -26,10 +30,14 @@ services:
       - "5433:5432"
     volumes:
       - ./postgres-products:/var/lib/postgresql
+      # Creates the app role (products-ms connects with it, so RLS applies) on first init
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     environment:
       - POSTGRES_USER=${PRODUCTS_DB_USER}
       - POSTGRES_PASSWORD=${PRODUCTS_DB_PASSWORD}
       - POSTGRES_DB=${PRODUCTS_DB_NAME}
+      - APP_DB_USER=${PRODUCTS_DB_APP_USER}
+      - APP_DB_PASSWORD=${PRODUCTS_DB_APP_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -97,9 +105,9 @@ services:
       target: migrate
     image: products-ms-migrate
     restart: "no"
-    # migrate deploy + seed (upserts by codigo_sku, safe to run on every start)
+    # migrate deploy as the table owner. New organizations start empty (no seed)
     environment:
-      - DATABASE_URL=postgresql://${PRODUCTS_DB_USER}:${PRODUCTS_DB_PASSWORD}@products-db:5432/${PRODUCTS_DB_NAME}?schema=public
+      - MIGRATE_DATABASE_URL=postgresql://${PRODUCTS_DB_USER}:${PRODUCTS_DB_PASSWORD}@products-db:5432/${PRODUCTS_DB_NAME}?schema=public
     depends_on:
       products-db:
         condition: service_healthy
@@ -114,7 +122,8 @@ services:
     restart: unless-stopped
     environment:
       - PORT=${PRODUCTS_MS_PORT}
-      - DATABASE_URL=postgresql://${PRODUCTS_DB_USER}:${PRODUCTS_DB_PASSWORD}@products-db:5432/${PRODUCTS_DB_NAME}?schema=public
+      # App role: not a superuser, so the RLS policies apply
+      - DATABASE_URL=postgresql://${PRODUCTS_DB_APP_USER}:${PRODUCTS_DB_APP_PASSWORD}@products-db:5432/${PRODUCTS_DB_NAME}?schema=public
       - RABBITMQ_URL=${RABBITMQ_URL}
     depends_on:
       products-migrate:
@@ -130,8 +139,9 @@ services:
       target: migrate
     image: orders-ms-migrate
     restart: "no"
+    # migrate deploy as the table owner
     environment:
-      - DATABASE_URL=postgresql://${ORDERS_DB_USER}:${ORDERS_DB_PASSWORD}@orders-db:5432/${ORDERS_DB_NAME}?schema=public
+      - MIGRATE_DATABASE_URL=postgresql://${ORDERS_DB_USER}:${ORDERS_DB_PASSWORD}@orders-db:5432/${ORDERS_DB_NAME}?schema=public
     depends_on:
       orders-db:
         condition: service_healthy
@@ -146,7 +156,8 @@ services:
     restart: unless-stopped
     environment:
       - PORT=${ORDERS_MS_PORT}
-      - DATABASE_URL=postgresql://${ORDERS_DB_USER}:${ORDERS_DB_PASSWORD}@orders-db:5432/${ORDERS_DB_NAME}?schema=public
+      # App role: not a superuser, so the RLS policies apply
+      - DATABASE_URL=postgresql://${ORDERS_DB_APP_USER}:${ORDERS_DB_APP_PASSWORD}@orders-db:5432/${ORDERS_DB_NAME}?schema=public
       - RABBITMQ_URL=${RABBITMQ_URL}
     depends_on:
       orders-migrate:
@@ -154,8 +165,9 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # db update applies the committed Prisma contract to the database (creates the
-  # users collection, its unique email index and validator, or evolves them).
+  # db update applies the committed Prisma contract to the database (creates the users,
+  # organizations and memberships collections, their unique indexes and validators, or
+  # evolves them).
   # --no-interactive: a destructive change fails the job instead of prompting
   # (it needs an explicit --confirm authdb)
   auth-migrate:
@@ -184,10 +196,10 @@ services:
       - PORT=${AUTH_MS_PORT}
       - DATABASE_URL=${AUTH_DATABASE_URL}
       - JWT_SECRET=${JWT_SECRET}
-      # Initial owner, created on startup if no user has OWNER_EMAIL
-      - OWNER_NAME=${OWNER_NAME}
-      - OWNER_EMAIL=${OWNER_EMAIL}
-      - OWNER_PASSWORD=${OWNER_PASSWORD}
+      # Platform superadmin, created on startup if no user has SUPERADMIN_EMAIL
+      - SUPERADMIN_NAME=${SUPERADMIN_NAME}
+      - SUPERADMIN_EMAIL=${SUPERADMIN_EMAIL}
+      - SUPERADMIN_PASSWORD=${SUPERADMIN_PASSWORD}
     depends_on:
       auth-migrate:
         condition: service_completed_successfully
