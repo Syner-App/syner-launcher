@@ -235,8 +235,16 @@ services:
       - AUTH_MICROSERVICE_PORT=${AUTH_MS_PORT}
       - FINANCE_MICROSERVICE_HOST=${FINANCE_MS_HOST}
       - FINANCE_MICROSERVICE_PORT=${FINANCE_MS_PORT}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - CORS_ORIGINS=${CLIENT_GATEWAY_CORS_ORIGINS}
     depends_on:
-      - products-ms
-      - orders-ms
-      - auth-ms
-      - finance-ms
+      products-ms:
+        condition: service_started
+      orders-ms:
+        condition: service_started
+      auth-ms:
+        condition: service_started
+      finance-ms:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy

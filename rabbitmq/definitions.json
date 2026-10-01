@@ -101,6 +101,15 @@
       "durable": true,
       "auto_delete": false,
       "arguments": {}
+    },
+    {
+      "name": "gateway.notifications",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 60000
+      }
     }
   ],
   "bindings": [
@@ -190,6 +199,22 @@
       "destination": "finance.events.dlq",
       "destination_type": "queue",
       "routing_key": "finance.events",
+      "arguments": {}
+    },
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "gateway.notifications",
+      "destination_type": "queue",
+      "routing_key": "alert.created",
+      "arguments": {}
+    },
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "gateway.notifications",
+      "destination_type": "queue",
+      "routing_key": "alert.resolved",
       "arguments": {}
     }
   ]
