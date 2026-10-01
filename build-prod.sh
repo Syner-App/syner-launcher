@@ -18,6 +18,7 @@ SERVICES=(
   finance-migrate
   finance-ms
   client-gateway
+  syner-app
 )
 
 build_service() {

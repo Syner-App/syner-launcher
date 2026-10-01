@@ -1,10 +1,11 @@
 # Syner
 
-Microservicios NestJS:
+Microservicios NestJS y el frontend Next.js:
 
 | Servicio | Puerto | Transporte | Persistencia |
 | --- | --- | --- | --- |
-| [`client-gateway`](client-gateway) | 3000 (HTTP, `/api`), el único publicado | gRPC hacia los microservicios | — |
+| [`syner-app`](syner-app) | 3001 (HTTP, Next.js), publicado | HTTP hacia el gateway (BFF) + Socket.IO | — |
+| [`client-gateway`](client-gateway) | 3000 (HTTP, `/api`), publicado | gRPC hacia los microservicios | — |
 | [`products-ms`](products-ms) | 3001 (gRPC, solo red interna de Docker) | gRPC + RabbitMQ | PostgreSQL (`products-db`) |
 | [`orders-ms`](orders-ms) | 3002 (gRPC, solo red interna de Docker) | gRPC + RabbitMQ | PostgreSQL (`orders-db`) |
 | [`auth-ms`](auth-ms) | 3003 (gRPC, solo red interna de Docker) | gRPC | MongoDB (`auth-db`) con Prisma 8 |
@@ -94,6 +95,7 @@ finance-ms es el único servicio que llama a otro por gRPC, y solo para leer: cu
 - **MongoDB de auth** (`auth_database`, :27017, datos en `./mongo`). Corre como replica set de un nodo (`rs0`); el healthcheck lo inicializa en el primer arranque. Prisma 8 exige MongoDB >= 8.0.
 - **RabbitMQ** (`syner_rabbitmq`, AMQP :5672, UI http://localhost:15672 con `guest`/`guest`, datos en `./rabbitmq-data`). Tiene `hostname` fijo porque RabbitMQ guarda sus datos en `mnesia/rabbit@<hostname>`.
 - Los cinco servicios NestJS.
+- **syner-app** (`syner_app`, http://localhost:3001): `next dev` con `src/` y `public/` montados. Sus route handlers llaman al gateway por la red de Docker (`GATEWAY_URL=http://client-gateway:3000/api`); el navegador abre el socket de notificaciones contra el gateway publicado (`SYNER_APP_PUBLIC_GATEWAY_URL`). En producción usa el build `standalone` de Next.js; `NEXT_PUBLIC_GATEWAY_WS_URL` se incrusta en el bundle al construir, así que si cambia `SYNER_APP_PUBLIC_GATEWAY_URL` hay que reconstruir la imagen.
 
 Los Postgres, MongoDB y RabbitMQ tienen healthchecks; orders-ms, products-ms, auth-ms y finance-ms esperan a que estén `healthy`.
 
@@ -157,6 +159,7 @@ docker compose -f docker-compose.prod.yml build orders-ms
 docker compose -f docker-compose.prod.yml build finance-migrate
 docker compose -f docker-compose.prod.yml build finance-ms
 docker compose -f docker-compose.prod.yml build client-gateway
+docker compose -f docker-compose.prod.yml build syner-app
 docker compose -f docker-compose.prod.yml up -d
 ```
 

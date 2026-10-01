@@ -214,7 +214,7 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # The only service published to the host: the microservices (3001, 3002, 3003, 3004)
+  # Published to the host along with syner-app: the microservices (3001, 3002, 3003, 3004)
   # are reachable only inside the Docker network
   client-gateway:
     container_name: syner_client_gateway
@@ -248,3 +248,23 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+
+  # Next.js frontend in development mode: src/ and public/ are bind-mounted and
+  # `next dev` hot-reloads. Its route handlers (BFF) call the gateway over the Docker
+  # network; the browser opens the notifications socket against the published gateway
+  syner-app:
+    container_name: syner_app
+    init: true # forwards stop signals and reaps the dev server's child processes
+    build: ./syner-app
+    restart: unless-stopped
+    ports:
+      - ${SYNER_APP_PORT}:3001
+    volumes:
+      - ./syner-app/src:/app/src
+      - ./syner-app/public:/app/public
+    environment:
+      - GATEWAY_URL=http://client-gateway:3000/api
+      - NEXT_PUBLIC_GATEWAY_WS_URL=${SYNER_APP_PUBLIC_GATEWAY_URL}
+    depends_on:
+      client-gateway:
+        condition: service_started
