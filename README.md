@@ -167,6 +167,15 @@ Si lanzas todo a la vez (`docker compose -f docker-compose.prod.yml build`), los
 
 El stack de producción usa los mismos nombres de contenedor y puertos que el de desarrollo, así que no pueden correr a la vez: `docker compose -f docker-compose.prod.yml up -d` reemplaza los contenedores de desarrollo (los datos se conservan), y `docker compose up -d --build` vuelve a desarrollo.
 
+Las imágenes de los servicios que se descargan de Docker Hub las publica el CI de cada repo para `linux/amd64` y `linux/arm64` (incluye Mac con Apple Silicon). Si `up -d` avisa `no matching manifest for linux/arm64/v8`, la imagen `latest` es anterior a ese cambio: haz un push a `main` del servicio para que el CI la vuelva a publicar.
+
+Si `up -d` falla con `failed to set up container networking: network <id> not found`, hay contenedores viejos que apuntan a una red que ya no existe. Bájalo todo y vuelve a levantarlo:
+
+```bash
+docker compose -f docker-compose.prod.yml down --remove-orphans
+docker compose -f docker-compose.prod.yml up -d
+```
+
 ## Mensajes fallidos (DLQ)
 
 Un mensaje de la saga que no se puede procesar (payload inválido o error repetido) termina en su cola `.dlq`. Para revisarlo o reintentarlo:
