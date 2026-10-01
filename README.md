@@ -137,7 +137,15 @@ Para depurar un servicio fuera de Docker, detén su contenedor (`docker compose 
 
 Los cambios de base de datos corren antes como jobs de una sola ejecución, construidos con el target `migrate` del mismo `Dockerfile.prod` (que conserva el CLI de Prisma): `products-migrate`, `orders-migrate` y `finance-migrate` (`migrate deploy` como owner) y `auth-migrate` (`db update --no-interactive`). Cada microservicio arranca solo cuando su job termina bien.
 
-**Construye las imágenes servicio por servicio**, no todas a la vez:
+**Construye las imágenes servicio por servicio**, no todas a la vez. [`build-prod.sh`](build-prod.sh) lo hace por ti: construye cada imagen en orden, empieza la siguiente solo cuando termina la anterior, reintenta cada build hasta 3 veces (`MAX_ATTEMPTS`) y al final ejecuta `up -d` (`--no-up` para solo construir):
+
+```bash
+./build-prod.sh
+./build-prod.sh --no-up
+MAX_ATTEMPTS=5 ./build-prod.sh
+```
+
+Equivale a:
 
 ```bash
 docker compose -f docker-compose.prod.yml build auth-migrate
