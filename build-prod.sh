@@ -47,5 +47,6 @@ if [[ "${1:-}" == "--no-up" ]]; then
   exit 0
 fi
 
-echo "==> docker compose -f $COMPOSE_FILE up -d"
-docker compose -f "$COMPOSE_FILE" up -d
+echo "==> docker compose -f $COMPOSE_FILE up -d --pull never"
+# --pull never: start the images just built here, not the ones from Docker Hub
+docker compose -f "$COMPOSE_FILE" up -d --pull never

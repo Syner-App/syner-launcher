@@ -140,7 +140,8 @@ services:
     build:
       context: ./products-ms
       dockerfile: Dockerfile.prod
-    image: products-ms
+    image: spadilla117/syner-products-ms
+    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
     environment:
       - PORT=${PRODUCTS_MS_PORT}
@@ -174,7 +175,8 @@ services:
     build:
       context: ./orders-ms
       dockerfile: Dockerfile.prod
-    image: orders-ms
+    image: spadilla117/syner-orders-ms
+    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
     environment:
       - PORT=${ORDERS_MS_PORT}
@@ -212,7 +214,8 @@ services:
     build:
       context: ./auth-ms
       dockerfile: Dockerfile.prod
-    image: auth-ms
+    image: spadilla117/syner-auth-ms
+    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
     environment:
       - PORT=${AUTH_MS_PORT}
@@ -249,7 +252,8 @@ services:
     build:
       context: ./finance-ms
       dockerfile: Dockerfile.prod
-    image: finance-ms
+    image: spadilla117/syner-finance-ms
+    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
     environment:
       - PORT=${FINANCE_MS_PORT}
@@ -275,7 +279,8 @@ services:
     build:
       context: ./client-gateway
       dockerfile: Dockerfile.prod
-    image: client-gateway
+    image: spadilla117/syner-client-gateway
+    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
     ports:
       - ${CLIENT_GATEWAY_PORT}:3000
@@ -314,7 +319,8 @@ services:
       dockerfile: Dockerfile.prod
       args:
         - NEXT_PUBLIC_GATEWAY_WS_URL=${SYNER_APP_PUBLIC_GATEWAY_URL}
-    image: syner-app
+    image: spadilla117/syner-app
+    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
     ports:
       - ${SYNER_APP_PORT}:3001
