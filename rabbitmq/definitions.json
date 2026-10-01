@@ -84,6 +84,23 @@
       "durable": true,
       "auto_delete": false,
       "arguments": {}
+    },
+    {
+      "name": "finance.events",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "syner.dlx",
+        "x-dead-letter-routing-key": "finance.events"
+      }
+    },
+    {
+      "name": "finance.events.dlq",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
     }
   ],
   "bindings": [
@@ -133,6 +150,46 @@
       "destination": "products.purchase-orders.dlq",
       "destination_type": "queue",
       "routing_key": "products.purchase-orders",
+      "arguments": {}
+    },
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "products.purchase-orders",
+      "destination_type": "queue",
+      "routing_key": "finance.sale.registered",
+      "arguments": {}
+    },
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "finance.events",
+      "destination_type": "queue",
+      "routing_key": "purchase-order.received",
+      "arguments": {}
+    },
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "finance.events",
+      "destination_type": "queue",
+      "routing_key": "finance.sale.stock.applied",
+      "arguments": {}
+    },
+    {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "finance.events",
+      "destination_type": "queue",
+      "routing_key": "finance.sale.stock.rejected",
+      "arguments": {}
+    },
+    {
+      "source": "syner.dlx",
+      "vhost": "/",
+      "destination": "finance.events.dlq",
+      "destination_type": "queue",
+      "routing_key": "finance.events",
       "arguments": {}
     }
   ]

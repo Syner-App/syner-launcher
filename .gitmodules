@@ -13,3 +13,6 @@
 [submodule "syner-app"]
 	path = syner-app
 	url = https://github.com/Syner-App/syner-app.git
+[submodule "finance-ms"]
+	path = finance-ms
+	url = https://github.com/Syner-App/finance-ms.git

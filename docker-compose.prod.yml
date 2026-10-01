@@ -44,6 +44,28 @@ services:
       timeout: 5s
       retries: 10
 
+  finance-db:
+    container_name: finance_database
+    image: postgres:18.6-alpine3.24
+    restart: always
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./postgres-finance:/var/lib/postgresql
+      # Creates the app role (finance-ms connects with it, so RLS applies) on first init
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    environment:
+      - POSTGRES_USER=${FINANCE_DB_USER}
+      - POSTGRES_PASSWORD=${FINANCE_DB_PASSWORD}
+      - POSTGRES_DB=${FINANCE_DB_NAME}
+      - APP_DB_USER=${FINANCE_DB_APP_USER}
+      - APP_DB_PASSWORD=${FINANCE_DB_APP_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   # MongoDB for auth-ms. Prisma 8 needs MongoDB >= 8.0; it runs as a single-node
   # replica set (rs0) so transactions/change streams are available. The healthcheck
   # initiates the replica set on first start and reports healthy once it is ready
@@ -204,7 +226,48 @@ services:
       auth-migrate:
         condition: service_completed_successfully
 
-  # The only service published to the host: the microservices (3001, 3002, 3003)
+  finance-migrate:
+    container_name: syner_finance_migrate
+    build:
+      context: ./finance-ms
+      dockerfile: Dockerfile.prod
+      target: migrate
+    image: finance-ms-migrate
+    restart: "no"
+    # migrate deploy as the table owner
+    environment:
+      - MIGRATE_DATABASE_URL=postgresql://${FINANCE_DB_USER}:${FINANCE_DB_PASSWORD}@finance-db:5432/${FINANCE_DB_NAME}?schema=public
+    depends_on:
+      finance-db:
+        condition: service_healthy
+
+  # Accounting, cash flow and break-even. It reads the stock (products-ms) and the open
+  # purchase orders (orders-ms) over gRPC; every change to them travels as an event
+  finance-ms:
+    container_name: syner_finance_ms
+    init: true # forwards stop signals to the Node process
+    build:
+      context: ./finance-ms
+      dockerfile: Dockerfile.prod
+    image: finance-ms
+    restart: unless-stopped
+    environment:
+      - PORT=${FINANCE_MS_PORT}
+      # App role: not a superuser, so the RLS policies apply
+      - DATABASE_URL=postgresql://${FINANCE_DB_APP_USER}:${FINANCE_DB_APP_PASSWORD}@finance-db:5432/${FINANCE_DB_NAME}?schema=public
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - PRODUCTS_MICROSERVICE_HOST=${PRODUCTS_MS_HOST}
+      - PRODUCTS_MICROSERVICE_PORT=${PRODUCTS_MS_PORT}
+      - ORDERS_MICROSERVICE_HOST=${ORDERS_MS_HOST}
+      - ORDERS_MICROSERVICE_PORT=${ORDERS_MS_PORT}
+      - BUSINESS_TIMEZONE=${BUSINESS_TIMEZONE}
+    depends_on:
+      finance-migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+
+  # The only service published to the host: the microservices (3001, 3002, 3003, 3004)
   # are reachable only inside the Docker network
   client-gateway:
     container_name: syner_client_gateway
@@ -224,7 +287,10 @@ services:
       - ORDERS_MICROSERVICE_PORT=${ORDERS_MS_PORT}
       - AUTH_MICROSERVICE_HOST=${AUTH_MS_HOST}
       - AUTH_MICROSERVICE_PORT=${AUTH_MS_PORT}
+      - FINANCE_MICROSERVICE_HOST=${FINANCE_MS_HOST}
+      - FINANCE_MICROSERVICE_PORT=${FINANCE_MS_PORT}
     depends_on:
       - products-ms
       - orders-ms
       - auth-ms
+      - finance-ms

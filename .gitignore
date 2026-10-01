@@ -6,4 +6,5 @@ rabbitmq-data/
 
 node_modules/
 postgres-products/
+postgres-finance/
 mongo/
