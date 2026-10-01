@@ -10,3 +10,6 @@
 [submodule "auth-ms"]
 	path = auth-ms
 	url = https://github.com/Syner-App/auth-ms.git
+[submodule "syner-app"]
+	path = syner-app
+	url = https://github.com/Syner-App/syner-app.git
