@@ -79,3 +79,36 @@ kubectl get secret <nombre> -o yaml > <nombre>.yml
 ```
 kubectl create -f <nombre>.yml
 ```
+
+# Despliegue del chart `syner`
+
+## Conexiones gRPC
+Cada microservicio (`products-ms:3001`, `orders-ms:3002`, `auth-ms:3003`, `finance-ms:3004`) tiene un Service **ClusterIP**: el gateway y finance-ms los llaman por nombre DNS dentro del cluster. NodePort solo se usa para lo que se abre fuera del cluster (`client-gateway`, `syner-app`, `rabbitmq-management`).
+
+> Con más de 1 réplica, kube-proxy balancea **por conexión** y gRPC (HTTP/2) mantiene una sola conexión abierta, así que todo el tráfico iría a un pod. Para escalar: Service headless (`clusterIP: None`) + balanceo `round_robin` en el cliente gRPC, o un service mesh.
+
+## Bases de datos
+`values.yaml` → `databases.inCluster`:
+* `true` (por defecto): el chart crea `orders-db`, `products-db`, `finance-db` (Postgres, StatefulSet + PVC) y `auth-db` (Mongo replica set `rs0`). El rol de la app (RLS) se crea con `files/postgres-init/app-role.sh` la primera vez que se inicializa el volumen.
+* `false`: no se crea ninguna DB; las URLs de los Secrets apuntan a una DB gestionada (Cloud SQL, RDS, Atlas). Ej: `helm upgrade --install syner ./syner --set databases.inCluster=false`
+
+Secrets de cada Postgres (`<orders|products|finance>-db`):
+```
+kubectl create secret generic products-db \
+  --from-literal=POSTGRES_USER=<owner> --from-literal=POSTGRES_PASSWORD=<pass> --from-literal=POSTGRES_DB=<db> \
+  --from-literal=APP_DB_USER=<app_user> --from-literal=APP_DB_PASSWORD=<app_pass>
+```
+
+## Migraciones
+Jobs `<ms>-migrate` (hooks `post-install,post-upgrade`) con la imagen `spadilla117/syner-<ms>-migrate` (target `migrate` de `Dockerfile.prod`, publicada por CI). Si un Job falla, falla el `helm install/upgrade`. Las migraciones deben ser compatibles hacia atrás (primero agregar, borrar en un release posterior) porque pods viejos y nuevos conviven durante el rollout.
+
+Cada Secret de micro necesita la URL del **dueño de las tablas** para migrar, además de la del rol app:
+```
+# DATABASE_URL         = postgresql://<app_user>:<app_pass>@products-db:5432/<db>?schema=public
+# MIGRATE_DATABASE_URL = postgresql://<owner>:<pass>@products-db:5432/<db>?schema=public
+kubectl patch secret products-ms -p "{\"data\":{\"MIGRATE_DATABASE_URL\":\"$(printf '%s' 'postgresql://<owner>:<pass>@products-db:5432/<db>?schema=public' | base64)\"}}"
+```
+`auth-ms-migrate` usa la `DATABASE_URL` de `auth-secrets` (ej: `mongodb://auth-db:27017/<db>?replicaSet=rs0`).
+
+* Ver logs: `kubectl logs job/products-ms-migrate` (el Job se borra al terminar bien; si falla queda para revisarlo)
+* Aplicar: `helm upgrade --install syner ./syner`

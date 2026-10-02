@@ -1,0 +1,18 @@
+# Internal gRPC endpoint: the gateway (and finance-ms) dial finance-ms:3004 by DNS name.
+# ClusterIP, not NodePort: the traffic is pod-to-pod and never leaves the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: finance-ms
+  name: finance-ms
+spec:
+  ports:
+  - name: grpc
+    port: 3004
+    protocol: TCP
+    targetPort: 3004
+    appProtocol: grpc
+  selector:
+    app: finance-ms
+  type: ClusterIP

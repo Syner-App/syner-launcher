@@ -43,5 +43,15 @@ spec:
           value: "3002"
         - name: BUSINESS_TIMEZONE
           value: "America/Bogota"
+        ports:
+        - name: grpc
+          containerPort: 3004
+        # TCP only: it does not touch the database, so a pending migration never
+        # blocks the rollout (or helm --wait)
+        readinessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 5
+          periodSeconds: 10
         resources: {}
 status: {}

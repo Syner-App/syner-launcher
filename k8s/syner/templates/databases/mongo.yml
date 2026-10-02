@@ -1,0 +1,68 @@
+{{- if .Values.databases.inCluster }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: auth-db
+  name: auth-db
+spec:
+  ports:
+  - name: mongo
+    port: 27017
+    targetPort: 27017
+  selector:
+    app: auth-db
+  type: ClusterIP
+---
+# MongoDB for auth-ms. Prisma needs MongoDB >= 8.0 running as a replica set (rs0) for
+# transactions; single node, as in compose
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: auth-db
+  name: auth-db
+spec:
+  serviceName: auth-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-db
+  template:
+    metadata:
+      labels:
+        app: auth-db
+    spec:
+      containers:
+      - image: {{ .Values.databases.mongo.image }}
+        name: mongo
+        args: ["--replSet", "rs0", "--bind_ip_all"]
+        ports:
+        - name: mongo
+          containerPort: 27017
+        # Same check as the compose healthcheck: initiates the replica set on first start
+        # (the member host is the Service name, which every client resolves) and reports
+        # ready once it is up
+        readinessProbe:
+          exec:
+            command:
+            - mongosh
+            - --quiet
+            - --eval
+            - "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'auth-db:27017' }] }).ok }"
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: data
+          mountPath: /data/db
+        resources: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ .Values.databases.mongo.storage }}
+{{- end }}

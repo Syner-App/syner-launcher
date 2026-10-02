@@ -48,5 +48,15 @@ spec:
             secretKeyRef:
               name: auth-secrets
               key: SUPERADMIN_PASSWORD
+        ports:
+        - name: grpc
+          containerPort: 3003
+        # TCP only: it does not touch the database, so a pending migration never
+        # blocks the rollout (or helm --wait)
+        readinessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 5
+          periodSeconds: 10
         resources: {}
 status: {}

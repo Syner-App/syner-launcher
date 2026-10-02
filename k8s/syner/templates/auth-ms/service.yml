@@ -1,0 +1,18 @@
+# Internal gRPC endpoint: the gateway (and finance-ms) dial auth-ms:3003 by DNS name.
+# ClusterIP, not NodePort: the traffic is pod-to-pod and never leaves the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: auth-ms
+  name: auth-ms
+spec:
+  ports:
+  - name: grpc
+    port: 3003
+    protocol: TCP
+    targetPort: 3003
+    appProtocol: grpc
+  selector:
+    app: auth-ms
+  type: ClusterIP

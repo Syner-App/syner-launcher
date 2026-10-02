@@ -1,0 +1,13 @@
+# Declarative topology, same files as compose (copied into files/rabbitmq): guest user,
+# exchanges, work queues, DLX and DLQs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: rabbitmq
+  name: rabbitmq-definitions
+data:
+  10-definitions.conf: |-
+{{ .Files.Get "files/rabbitmq/rabbitmq.conf" | indent 4 }}
+  definitions.json: |-
+{{ .Files.Get "files/rabbitmq/definitions.json" | indent 4 }}

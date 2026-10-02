@@ -1,0 +1,23 @@
+databases:
+  # true: the chart runs Postgres (orders, products, finance) and Mongo (auth) as
+  # StatefulSets with their own volumes. false: none are created and the microservices
+  # use the DATABASE_URL / MIGRATE_DATABASE_URL in their Secrets as-is, pointing at a
+  # managed database (Cloud SQL, RDS, Atlas...)
+  inCluster: true
+  postgres:
+    image: postgres:18.6-alpine3.24
+    storage: 1Gi
+    # One StatefulSet + Service "<name>-db" each, credentials from the Secret "<name>-db"
+    instances:
+      - orders
+      - products
+      - finance
+  mongo:
+    image: mongo:8
+    storage: 1Gi
+
+# Migration Jobs (Helm hooks): the `migrate` target of each Dockerfile.prod, published
+# by CI as spadilla117/syner-<service>-migrate
+migrations:
+  imageRepository: spadilla117
+  imageTag: latest

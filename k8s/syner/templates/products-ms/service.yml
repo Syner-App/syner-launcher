@@ -1,0 +1,18 @@
+# Internal gRPC endpoint: the gateway (and finance-ms) dial products-ms:3001 by DNS name.
+# ClusterIP, not NodePort: the traffic is pod-to-pod and never leaves the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: products-ms
+  name: products-ms
+spec:
+  ports:
+  - name: grpc
+    port: 3001
+    protocol: TCP
+    targetPort: 3001
+    appProtocol: grpc
+  selector:
+    app: products-ms
+  type: ClusterIP

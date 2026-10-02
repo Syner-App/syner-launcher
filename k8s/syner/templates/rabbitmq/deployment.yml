@@ -1,7 +1,6 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  creationTimestamp: null
   labels:
     app: rabbitmq
   name: rabbitmq
@@ -10,15 +9,37 @@ spec:
   selector:
     matchLabels:
       app: rabbitmq
-  strategy: {}
   template:
     metadata:
-      creationTimestamp: null
       labels:
         app: rabbitmq
+      annotations:
+        # Restarts the broker when the definitions change on helm upgrade
+        checksum/definitions: {{ include (print $.Template.BasePath "/rabbitmq/configmap.yml") . | sha256sum }}
     spec:
       containers:
       - image: rabbitmq:4-management
         name: rabbitmq
+        ports:
+        - name: amqp
+          containerPort: 5672
+        - name: management
+          containerPort: 15672
+        readinessProbe:
+          exec:
+            command: ["rabbitmq-diagnostics", "-q", "ping"]
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: definitions
+          mountPath: /etc/rabbitmq/conf.d/10-definitions.conf
+          subPath: 10-definitions.conf
+        - name: definitions
+          mountPath: /etc/rabbitmq/definitions.json
+          subPath: definitions.json
         resources: {}
-status: {}
+      volumes:
+      - name: definitions
+        configMap:
+          name: rabbitmq-definitions

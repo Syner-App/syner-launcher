@@ -1,0 +1,60 @@
+{{- /*
+One Job per microservice running its `migrate` image (Dockerfile.prod, target migrate):
+prisma migrate deploy as the table owner (Postgres) or prisma db update (Mongo).
+Helm hooks:
+  post-install, post-upgrade: the databases are ordinary release resources, so they do
+  not exist yet in a pre-* phase (a pre-upgrade Job would wait forever for a database
+  the same upgrade introduces). The microservices start alongside and pick up the
+  schema once the Job finishes; old and new pods overlap during any rollout anyway, so
+  migrations must stay backward compatible (expand first, drop in a later release)
+A failed Job fails the install/upgrade. With databases.inCluster=false the wait step is
+skipped and backoffLimit covers a database that is briefly unreachable
+*/ -}}
+{{- $jobs := list
+  (dict "name" "products-ms" "db" "products-db" "kind" "postgres" "secret" "products-ms" "env" "MIGRATE_DATABASE_URL")
+  (dict "name" "orders-ms"   "db" "orders-db"   "kind" "postgres" "secret" "orders-ms"   "env" "MIGRATE_DATABASE_URL")
+  (dict "name" "finance-ms"  "db" "finance-db"  "kind" "postgres" "secret" "finance-ms"  "env" "MIGRATE_DATABASE_URL")
+  (dict "name" "auth-ms"     "db" "auth-db"     "kind" "mongo"    "secret" "auth-secrets" "env" "DATABASE_URL")
+}}
+{{- range $jobs }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app: {{ .name }}-migrate
+  name: {{ .name }}-migrate
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: {{ .name }}-migrate
+    spec:
+      restartPolicy: Never
+      {{- if $.Values.databases.inCluster }}
+      initContainers:
+      - name: wait-for-db
+        {{- if eq .kind "postgres" }}
+        image: {{ $.Values.databases.postgres.image }}
+        command: ["sh", "-c", "until pg_isready -h {{ .db }} -p 5432; do sleep 2; done"]
+        {{- else }}
+        image: {{ $.Values.databases.mongo.image }}
+        # Waits for the replica set to have a writable primary, not just an open port
+        command: ["sh", "-c", "until mongosh --quiet --host {{ .db }} --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; do sleep 2; done"]
+        {{- end }}
+      {{- end }}
+      containers:
+      - name: migrate
+        image: {{ $.Values.migrations.imageRepository }}/syner-{{ .name }}-migrate:{{ $.Values.migrations.imageTag }}
+        env:
+        - name: {{ .env }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .secret }}
+              key: {{ .env }}
+        resources: {}
+{{- end }}

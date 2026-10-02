@@ -1,0 +1,81 @@
+{{- if .Values.databases.inCluster }}
+# Creates the app role (each microservice connects with it, so RLS applies) the first
+# time a Postgres volume is initialized. Same script as compose (files/postgres-init)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  app-role.sh: |-
+{{ .Files.Get "files/postgres-init/app-role.sh" | indent 4 }}
+{{- range .Values.databases.postgres.instances }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: {{ . }}-db
+  name: {{ . }}-db
+spec:
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+  selector:
+    app: {{ . }}-db
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: {{ . }}-db
+  name: {{ . }}-db
+spec:
+  serviceName: {{ . }}-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ . }}-db
+  template:
+    metadata:
+      labels:
+        app: {{ . }}-db
+    spec:
+      containers:
+      - image: {{ $.Values.databases.postgres.image }}
+        name: postgres
+        ports:
+        - name: postgres
+          containerPort: 5432
+        # POSTGRES_USER/PASSWORD/DB (table owner, used by migrations) and
+        # APP_DB_USER/PASSWORD (the app role, read by app-role.sh)
+        envFrom:
+        - secretRef:
+            name: {{ . }}-db
+        readinessProbe:
+          exec:
+            command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql
+        - name: init
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
+        resources: {}
+      volumes:
+      - name: init
+        configMap:
+          name: postgres-init
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ $.Values.databases.postgres.storage }}
+{{- end }}
+{{- end }}

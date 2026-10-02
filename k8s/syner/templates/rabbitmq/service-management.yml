@@ -1,0 +1,17 @@
+# Management UI (guest / guest) published outside the cluster. Its own name: a second
+# Service called "rabbitmq" would collide with the AMQP one
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: rabbitmq
+  name: rabbitmq-management
+spec:
+  ports:
+  - name: management
+    port: 15672
+    protocol: TCP
+    targetPort: 15672
+  selector:
+    app: rabbitmq
+  type: NodePort
