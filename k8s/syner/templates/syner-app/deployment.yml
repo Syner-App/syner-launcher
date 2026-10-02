@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: syner-app
+  name: syner-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: syner-app
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: syner-app
+    spec:
+      containers:
+      - image: spadilla117/syner-app
+        name: syner-app
+        env:
+        - name: GATEWAY_URL
+          value: "http://client-gateway:3000/api"
+        resources: {}
+status: {}

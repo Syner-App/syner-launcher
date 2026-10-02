@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: products-ms
+  name: products-ms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: products-ms
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: products-ms
+    spec:
+      containers:
+      - image: spadilla117/syner-products-ms
+        name: syner-products-ms
+        env:
+        - name: PORT
+          value: "3001"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: products-ms
+              key: DATABASE_URL
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: products-ms
+              key: RABBITMQ_URL
+        resources: {}
+status: {}

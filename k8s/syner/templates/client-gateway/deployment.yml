@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: client-gateway
+  name: client-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: client-gateway
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: client-gateway
+    spec:
+      containers:
+      - image: spadilla117/syner-client-gateway
+        name: syner-client-gateway
+        env:
+        - name: PORT
+          value: "3000"
+        - name: PRODUCTS_MICROSERVICE_HOST
+          value: "products-ms"
+        - name: PRODUCTS_MICROSERVICE_PORT
+          value: "3001"
+        - name: ORDERS_MICROSERVICE_HOST
+          value: "orders-ms"
+        - name: ORDERS_MICROSERVICE_PORT
+          value: "3002"
+        - name: AUTH_MICROSERVICE_HOST
+          value: "auth-ms"
+        - name: AUTH_MICROSERVICE_PORT
+          value: "3003"
+        - name: FINANCE_MICROSERVICE_HOST
+          value: "finance-ms"
+        - name: FINANCE_MICROSERVICE_PORT
+          value: "3004"
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: client-gateway
+              key: RABBITMQ_URL
+        - name: CORS_ORIGINS
+          value: "http://localhost:3001"
+        resources: {}
+status: {}

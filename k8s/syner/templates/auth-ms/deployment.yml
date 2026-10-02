@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: auth-ms
+  name: auth-ms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-ms
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: auth-ms
+    spec:
+      containers:
+      - image: spadilla117/syner-auth-ms
+        name: syner-auth-ms
+        env:
+        - name: PORT
+          value: "3003"
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: auth-secrets
+              key: DATABASE_URL
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: auth-secrets
+              key: JWT_SECRET
+        - name: SUPERADMIN_NAME
+          valueFrom:
+            secretKeyRef:
+              name: auth-secrets
+              key: SUPERADMIN_NAME
+        - name: SUPERADMIN_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: auth-secrets
+              key: SUPERADMIN_EMAIL
+        - name: SUPERADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: auth-secrets
+              key: SUPERADMIN_PASSWORD
+        resources: {}
+status: {}
