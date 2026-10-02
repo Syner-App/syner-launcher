@@ -17,6 +17,22 @@ spec:
       labels:
         app: auth-ms
     spec:
+      # The migration Job is a post-install/post-upgrade hook, so without this the app
+      # boots first: it creates the superadmin, Mongo creates `users` implicitly, and
+      # prisma db update then refuses to add the validator to a non-empty collection.
+      # Waits (with the migrate image, which has the CLI and the contract) until the
+      # database matches the contract: exit 0 = in sync, 4 = drift or no marker yet.
+      # Also holds new pods on upgrades until their schema change is applied
+      initContainers:
+      - name: wait-for-schema
+        image: {{ .Values.migrations.imageRepository }}/syner-auth-ms-migrate:{{ .Values.migrations.imageTag }}
+        command: ["sh", "-c", "until pnpm prisma db verify --no-interactive > /dev/null 2>&1; do echo 'waiting for auth-ms-migrate'; sleep 5; done"]
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: auth-secrets
+              key: DATABASE_URL
       containers:
       - image: spadilla117/syner-auth-ms
         name: syner-auth-ms

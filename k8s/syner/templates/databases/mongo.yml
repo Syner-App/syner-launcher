@@ -1,4 +1,8 @@
 {{- if .Values.databases.inCluster }}
+# Headless: auth-db resolves straight to the pod IP and auth-db-0.auth-db exists as a
+# stable name. publishNotReadyAddresses: the replica set is initiated by the readiness
+# probe itself, and Mongo checks that the member host reaches this node, so the name
+# must resolve before the pod is ready (a ClusterIP only routes to ready pods)
 apiVersion: v1
 kind: Service
 metadata:
@@ -6,13 +10,14 @@ metadata:
     app: auth-db
   name: auth-db
 spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
   ports:
   - name: mongo
     port: 27017
     targetPort: 27017
   selector:
     app: auth-db
-  type: ClusterIP
 ---
 # MongoDB for auth-ms. Prisma needs MongoDB >= 8.0 running as a replica set (rs0) for
 # transactions; single node, as in compose
@@ -41,15 +46,15 @@ spec:
         - name: mongo
           containerPort: 27017
         # Same check as the compose healthcheck: initiates the replica set on first start
-        # (the member host is the Service name, which every client resolves) and reports
-        # ready once it is up
+        # and reports ready once it is up. The member host is the pod's stable DNS name
+        # (headless Service); clients keep using auth-db:27017 with directConnection
         readinessProbe:
           exec:
             command:
             - mongosh
             - --quiet
             - --eval
-            - "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'auth-db:27017' }] }).ok }"
+            - "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'auth-db-0.auth-db:27017' }] }).ok }"
           initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 10

@@ -115,6 +115,8 @@ Cada Secret de micro necesita la URL del **dueño de las tablas** para migrar, a
 # MIGRATE_DATABASE_URL = postgresql://<owner>:<pass>@products-db:5432/<db>?schema=public
 kubectl patch secret products-ms -p "{\"data\":{\"MIGRATE_DATABASE_URL\":\"$(printf '%s' 'postgresql://<owner>:<pass>@products-db:5432/<db>?schema=public' | base64)\"}}"
 ```
+`auth-ms` tiene un initContainer (`wait-for-schema`) que espera a que `prisma db verify` confirme que Mongo ya coincide con el contrato: si arrancara antes, crearía el superadmin, Mongo crearía `users` implícitamente y `prisma db update` rechazaría agregar el validador a una colección con datos. Por eso **no usar `helm ... --wait`** con este chart: `--wait` espera a que los pods estén listos *antes* de los hooks post-install, y `auth-ms` espera al hook (bloqueo mutuo).
+
 `auth-ms-migrate` usa la `DATABASE_URL` de `auth-secrets` (ej: `mongodb://auth-db:27017/<db>?replicaSet=rs0`).
 
 * Ver logs: `kubectl logs job/products-ms-migrate` (el Job se borra al terminar bien; si falla queda para revisarlo)
