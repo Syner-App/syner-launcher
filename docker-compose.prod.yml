@@ -137,9 +137,6 @@ services:
   products-ms:
     container_name: syner_products_ms
     init: true # forwards stop signals to the Node process
-    build:
-      context: ./products-ms
-      dockerfile: Dockerfile.prod
     image: spadilla117/syner-products-ms
     pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
@@ -172,9 +169,6 @@ services:
   orders-ms:
     container_name: syner_order_ms
     init: true # forwards stop signals to the Node process
-    build:
-      context: ./orders-ms
-      dockerfile: Dockerfile.prod
     image: spadilla117/syner-orders-ms
     pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
@@ -211,9 +205,6 @@ services:
   auth-ms:
     container_name: syner_auth_ms
     init: true # forwards stop signals to the Node process
-    build:
-      context: ./auth-ms
-      dockerfile: Dockerfile.prod
     image: spadilla117/syner-auth-ms
     pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
@@ -249,9 +240,6 @@ services:
   finance-ms:
     container_name: syner_finance_ms
     init: true # forwards stop signals to the Node process
-    build:
-      context: ./finance-ms
-      dockerfile: Dockerfile.prod
     image: spadilla117/syner-finance-ms
     pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
@@ -314,11 +302,6 @@ services:
   syner-app:
     container_name: syner_app
     init: true # forwards stop signals to the Node process
-    build:
-      context: ./syner-app
-      dockerfile: Dockerfile.prod
-      args:
-        - NEXT_PUBLIC_GATEWAY_WS_URL=${SYNER_APP_PUBLIC_GATEWAY_URL}
     image: spadilla117/syner-app
     pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
     restart: unless-stopped
