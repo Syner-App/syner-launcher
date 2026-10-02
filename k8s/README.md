@@ -92,6 +92,13 @@ Cada microservicio (`products-ms:3001`, `orders-ms:3002`, `auth-ms:3003`, `finan
 * `true` (por defecto): el chart crea `orders-db`, `products-db`, `finance-db` (Postgres, StatefulSet + PVC) y `auth-db` (Mongo replica set `rs0`). El rol de la app (RLS) se crea con `files/postgres-init/app-role.sh` la primera vez que se inicializa el volumen.
 * `false`: no se crea ninguna DB; las URLs de los Secrets apuntan a una DB gestionada (Cloud SQL, RDS, Atlas). Ej: `helm upgrade --install syner ./syner --set databases.inCluster=false`
 
+### Crear los Secrets (recomendado)
+`./create-secrets.sh` lee el `.env` de la raíz (los mismos valores que `docker-compose.prod.yml`) y crea o actualiza todos los Secrets del chart: `<x>-db`, `<x>-ms` (`DATABASE_URL`, `MIGRATE_DATABASE_URL`, `RABBITMQ_URL`), `auth-secrets` y `client-gateway`. Es idempotente (volver a correrlo tras cambiar `.env`) y no imprime valores. Otro archivo: `./create-secrets.sh ruta/.env`
+
+> Ojo: re-aplica **todo** desde `.env`, incluido `JWT_SECRET`; si difiere del que tiene el cluster, los tokens emitidos dejan de ser válidos.
+
+Los comandos manuales equivalentes, como referencia.
+
 Secrets de cada Postgres (`<orders|products|finance>-db`):
 ```
 kubectl create secret generic products-db \
@@ -112,3 +119,30 @@ kubectl patch secret products-ms -p "{\"data\":{\"MIGRATE_DATABASE_URL\":\"$(pri
 
 * Ver logs: `kubectl logs job/products-ms-migrate` (el Job se borra al terminar bien; si falla queda para revisarlo)
 * Aplicar: `helm upgrade --install syner ./syner`
+
+## Bajar / apagar el despliegue
+
+**1. Borrar todo el release** (Deployments, Services, ConfigMaps y Jobs del chart):
+```
+helm uninstall syner
+```
+* Los Secrets creados a mano con `kubectl create secret` **no** se borran: siguen ahí para el próximo install.
+* Los volúmenes de las DBs (PVC de los StatefulSets) **tampoco** se borran, así los datos sobreviven a un reinstall. Para borrarlos a propósito (se pierden los datos): `kubectl delete pvc -l app=products-db` o `kubectl delete pvc --all`
+* Volver a levantar: `helm install syner ./syner`
+
+**2. Apagar sin borrar nada** (los pods se detienen, la configuración queda):
+```
+kubectl scale deployment --all --replicas=0
+kubectl scale statefulset --all --replicas=0
+```
+* Volver a levantar: `kubectl scale deployment --all --replicas=1` (y lo mismo con `statefulset`), o `helm upgrade syner ./syner`, que devuelve las réplicas a lo que dice el chart.
+
+**3. Apagar Kubernetes completo**: Docker Desktop → Settings → Kubernetes → desmarcar *Enable Kubernetes* (libera CPU y RAM).
+
+Verificar que no queda nada corriendo:
+```
+kubectl get pods,deployments,statefulsets,services
+helm list
+```
+
+> `kubectl delete pod <nombre>` no sirve para bajar un servicio: el Deployment lo vuelve a crear al instante.
