@@ -82,6 +82,26 @@ kubectl create -f <nombre>.yml
 
 # Despliegue del chart `syner`
 
+## Desplegar todo
+Desde la raíz del proyecto (`syner-launcher/`):
+```
+# 1. Crear/actualizar todos los Secrets a partir del .env de la raíz
+./k8s/create-secrets.sh
+
+# 2. Desplegar todo el chart: microservicios, gateway, syner-app, DBs, RabbitMQ y migraciones
+helm upgrade --install syner ./k8s/syner --timeout 10m
+```
+* `upgrade --install` sirve tanto para el primer despliegue como para los siguientes, no hay que elegir entre `install` y `upgrade`.
+* **No usar `--wait`**: el pod de `auth-ms` espera a que terminen las migraciones, y las migraciones (hooks post-install) esperan a que los pods estén listos, así que ninguno avanza (ver [Migraciones](#migraciones)). El `--timeout 10m` da margen a los Jobs de migración.
+* El paso 1 solo hace falta la primera vez o cuando cambie el `.env` (ojo: también re-aplica `JWT_SECRET`).
+* Con DB externa en vez de las del cluster: agregar `--set databases.inCluster=false`.
+
+Ver el progreso:
+```
+kubectl get pods,jobs -w
+helm list
+```
+
 ## Conexiones gRPC
 Cada microservicio (`products-ms:3001`, `orders-ms:3002`, `auth-ms:3003`, `finance-ms:3004`) tiene un Service **ClusterIP**: el gateway y finance-ms los llaman por nombre DNS dentro del cluster. NodePort solo se usa para lo que se abre fuera del cluster (`client-gateway`, `syner-app`, `rabbitmq-management`).
 
