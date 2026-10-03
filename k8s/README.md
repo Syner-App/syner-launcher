@@ -103,7 +103,15 @@ helm list
 ```
 
 ## Conexiones gRPC
-Cada microservicio (`products-ms:3001`, `orders-ms:3002`, `auth-ms:3003`, `finance-ms:3004`) tiene un Service **ClusterIP**: el gateway y finance-ms los llaman por nombre DNS dentro del cluster. NodePort solo se usa para lo que se abre fuera del cluster (`client-gateway`, `syner-app`, `rabbitmq-management`).
+Cada microservicio (`products-ms:3001`, `orders-ms:3002`, `auth-ms:3003`, `finance-ms:3004`) tiene un Service **ClusterIP**: el gateway y finance-ms los llaman por nombre DNS dentro del cluster. Lo que se abre fuera del cluster: `client-gateway` y `syner-app` como **LoadBalancer** (Docker Desktop los publica en `localhost:3000` y `localhost:3001`) y `rabbitmq-management` como NodePort.
+
+## Socket de alertas (tiempo real)
+Las llamadas HTTP de la app van servidor → gateway por DNS interno (`GATEWAY_URL=http://client-gateway:3000/api`), pero el socket de alertas lo abre **el navegador** directo al gateway, con la URL `NEXT_PUBLIC_GATEWAY_WS_URL` que queda horneada en la imagen de syner-app al compilar (por defecto `http://localhost:3000`). Por eso:
+* El gateway tiene que responder en `localhost:3000` y la app en `localhost:3001` (el origen permitido en `CORS_ORIGINS` del gateway). Un NodePort no sirve: su puerto es aleatorio (30000‑32767).
+* Bajar antes el compose (`docker compose -f docker-compose.prod.yml down`): usa los mismos puertos y el socket terminaría en su gateway, que no conoce el ticket (`unauthorized`).
+* Comprobar: `kubectl get svc client-gateway syner-app` → `LoadBalancer`, `EXTERNAL-IP localhost`. En DevTools → Network → WS, `ws://localhost:3000/socket.io/...` con estado 101.
+* En otro host/dominio: reconstruir syner-app con el build arg `NEXT_PUBLIC_GATEWAY_WS_URL` (variable `vars.NEXT_PUBLIC_GATEWAY_WS_URL` del repo en CI) y poner ese origen en `CORS_ORIGINS`.
+* Los tickets del socket viven en memoria del gateway: con más de 1 réplica hace falta afinidad de sesión o un store compartido (Redis).
 
 > Con más de 1 réplica, kube-proxy balancea **por conexión** y gRPC (HTTP/2) mantiene una sola conexión abierta, así que todo el tráfico iría a un pod. Para escalar: Service headless (`clusterIP: None`) + balanceo `round_robin` en el cliente gRPC, o un service mesh.
 

@@ -1,3 +1,5 @@
+# LoadBalancer: Docker Desktop publishes it on localhost:3000, the URL the browser bundle
+# of syner-app opens the Socket.IO connection to (NEXT_PUBLIC_GATEWAY_WS_URL)
 apiVersion: v1
 kind: Service
 metadata:
@@ -13,6 +15,6 @@ spec:
     targetPort: 3000
   selector:
     app: client-gateway
-  type: NodePort
+  type: LoadBalancer
 status:
   loadBalancer: {}

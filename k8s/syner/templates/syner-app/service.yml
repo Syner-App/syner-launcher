@@ -1,3 +1,5 @@
+# LoadBalancer: Docker Desktop publishes it on localhost:3001, the origin the gateway
+# allows in CORS_ORIGINS (needed by the Socket.IO handshake)
 apiVersion: v1
 kind: Service
 metadata:
@@ -13,6 +15,6 @@ spec:
     targetPort: 3001
   selector:
     app: syner-app
-  type: NodePort
+  type: LoadBalancer
 status:
   loadBalancer: {}
