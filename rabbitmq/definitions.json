@@ -130,6 +130,14 @@
       "arguments": {}
     },
     {
+      "source": "syner.events",
+      "vhost": "/",
+      "destination": "orders.saga-replies",
+      "destination_type": "queue",
+      "routing_key": "alert.created",
+      "arguments": {}
+    },
+    {
       "source": "syner.dlx",
       "vhost": "/",
       "destination": "orders.saga-replies.dlq",
