@@ -176,6 +176,48 @@ docker compose -f docker-compose.prod.yml down --remove-orphans
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+### HTTPS en un VPS
+
+En el VPS la única entrada desde fuera es **nginx** (puertos 80 y 443), con un certificado de Let's Encrypt emitido para la IP pública. Lo emite [`init-cert.sh`](init-cert.sh) y el servicio `certbot` lo renueva. Los dos servicios solo corren con el perfil `https`. syner-app, el gateway, las bases de datos y RabbitMQ quedan publicados solo en `127.0.0.1`.
+
+nginx enruta así (todo desde el mismo origen, `https://<IP>`):
+- `/socket.io/` → client-gateway (WebSocket)
+- `/api/docs` → client-gateway (Swagger)
+- el resto → syner-app
+
+El certificado de IP solo existe con el perfil `shortlived` y dura unos 6 días. `certbot` revisa cada 12 h y renueva cuando toca. nginx recarga cada 6 h para tomar el certificado nuevo. Por eso la IP tiene que ser **estática**.
+
+1. Reserva la IP y abre los puertos (GCP):
+   ```bash
+   gcloud compute addresses create syner-ip --addresses=<IP> --region=<REGION>
+   gcloud compute firewall-rules create syner-allow-web --network=default \
+     --direction=INGRESS --action=ALLOW --rules=tcp:80,tcp:443 --source-ranges=0.0.0.0/0
+   ```
+2. En `.env` del VPS:
+   ```bash
+   COMPOSE_PROFILES=https
+   PUBLIC_IP=<IP>
+   CERTBOT_EMAIL=<tu email>
+   SYNER_APP_PORT=3001
+   CLIENT_GATEWAY_CORS_ORIGINS=https://<IP>
+   ```
+3. En el repo de syner-app, define la variable de Actions `NEXT_PUBLIC_GATEWAY_WS_URL=https://<IP>` y vuelve a correr el CI. La URL queda fija en el bundle al construir la imagen.
+4. En el VPS:
+   ```bash
+   docker compose -f docker-compose.prod.yml pull
+   ./init-cert.sh --staging   # opcional: prueba contra staging, sin gastar el rate limit
+   rm -rf certbot              # solo si probaste con --staging
+   ./init-cert.sh
+   ```
+
+Para comprobarlo:
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot certificates
+docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot renew --webroot -w /var/www/certbot --dry-run
+curl -I https://<IP>
+```
+
 ## Mensajes fallidos (DLQ)
 
 Un mensaje de la saga que no se puede procesar (payload inválido o error repetido) termina en su cola `.dlq`. Para revisarlo o reintentarlo:
