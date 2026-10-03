@@ -121,11 +121,8 @@ services:
 
   products-migrate:
     container_name: syner_products_migrate
-    build:
-      context: ./products-ms
-      dockerfile: Dockerfile.prod
-      target: migrate
-    image: products-ms-migrate
+    image: spadilla117/syner-products-ms-migrate
+    pull_policy: always # pulls the CI image from Docker Hub
     restart: "no"
     # migrate deploy as the table owner. New organizations start empty (no seed)
     environment:
@@ -138,7 +135,7 @@ services:
     container_name: syner_products_ms
     init: true # forwards stop signals to the Node process
     image: spadilla117/syner-products-ms
-    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
+    pull_policy: always # pulls the CI image from Docker Hub
     restart: unless-stopped
     environment:
       - PORT=${PRODUCTS_MS_PORT}
@@ -153,11 +150,8 @@ services:
 
   orders-migrate:
     container_name: syner_orders_migrate
-    build:
-      context: ./orders-ms
-      dockerfile: Dockerfile.prod
-      target: migrate
-    image: orders-ms-migrate
+    image: spadilla117/syner-orders-ms-migrate
+    pull_policy: always # pulls the CI image from Docker Hub
     restart: "no"
     # migrate deploy as the table owner
     environment:
@@ -170,7 +164,7 @@ services:
     container_name: syner_order_ms
     init: true # forwards stop signals to the Node process
     image: spadilla117/syner-orders-ms
-    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
+    pull_policy: always # pulls the CI image from Docker Hub
     restart: unless-stopped
     environment:
       - PORT=${ORDERS_MS_PORT}
@@ -190,11 +184,8 @@ services:
   # (it needs an explicit --confirm authdb)
   auth-migrate:
     container_name: syner_auth_migrate
-    build:
-      context: ./auth-ms
-      dockerfile: Dockerfile.prod
-      target: migrate
-    image: auth-ms-migrate
+    image: spadilla117/syner-auth-ms-migrate
+    pull_policy: always # pulls the CI image from Docker Hub
     restart: "no"
     environment:
       - DATABASE_URL=${AUTH_DATABASE_URL}
@@ -206,7 +197,7 @@ services:
     container_name: syner_auth_ms
     init: true # forwards stop signals to the Node process
     image: spadilla117/syner-auth-ms
-    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
+    pull_policy: always # pulls the CI image from Docker Hub
     restart: unless-stopped
     environment:
       - PORT=${AUTH_MS_PORT}
@@ -222,12 +213,9 @@ services:
 
   finance-migrate:
     container_name: syner_finance_migrate
-    build:
-      context: ./finance-ms
-      dockerfile: Dockerfile.prod
-      target: migrate
-    image: finance-ms-migrate
+    image: spadilla117/syner-finance-ms-migrate
     restart: "no"
+    pull_policy: always # pulls the CI image from Docker Hub
     # migrate deploy as the table owner
     environment:
       - MIGRATE_DATABASE_URL=postgresql://${FINANCE_DB_USER}:${FINANCE_DB_PASSWORD}@finance-db:5432/${FINANCE_DB_NAME}?schema=public
@@ -241,7 +229,7 @@ services:
     container_name: syner_finance_ms
     init: true # forwards stop signals to the Node process
     image: spadilla117/syner-finance-ms
-    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
+    pull_policy: always # pulls the CI image from Docker Hub
     restart: unless-stopped
     environment:
       - PORT=${FINANCE_MS_PORT}
@@ -264,11 +252,8 @@ services:
   client-gateway:
     container_name: syner_client_gateway
     init: true # forwards stop signals to the Node process
-    build:
-      context: ./client-gateway
-      dockerfile: Dockerfile.prod
     image: spadilla117/syner-client-gateway
-    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
+    pull_policy: always # pulls the CI image from Docker Hub
     restart: unless-stopped
     ports:
       - ${CLIENT_GATEWAY_PORT}:3000
@@ -303,7 +288,7 @@ services:
     container_name: syner_app
     init: true # forwards stop signals to the Node process
     image: spadilla117/syner-app
-    pull_policy: always # pulls the CI image from Docker Hub; *-migrate still build locally
+    pull_policy: always # pulls the CI image from Docker Hub
     restart: unless-stopped
     ports:
       - ${SYNER_APP_PORT}:3001
