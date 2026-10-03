@@ -137,10 +137,25 @@ kubectl patch secret products-ms -p "{\"data\":{\"MIGRATE_DATABASE_URL\":\"$(pri
 ```
 `auth-ms` tiene un initContainer (`wait-for-schema`) que espera a que `prisma db verify` confirme que Mongo ya coincide con el contrato: si arrancara antes, crearía el superadmin, Mongo crearía `users` implícitamente y `prisma db update` rechazaría agregar el validador a una colección con datos. Por eso **no usar `helm ... --wait`** con este chart: `--wait` espera a que los pods estén listos *antes* de los hooks post-install, y `auth-ms` espera al hook (bloqueo mutuo).
 
+`orders-ms` también tiene un `wait-for-schema`: espera a que `prisma migrate status` no tenga migraciones pendientes. Si arrancara antes que el Job, Prisma consultaría columnas que todavía no existen (ej: `alert_id`), los gRPC de órdenes fallarían y los `alert.created` terminarían en `orders.saga-replies.dlq`.
+
 `auth-ms-migrate` usa la `DATABASE_URL` de `auth-secrets` (ej: `mongodb://auth-db:27017/<db>?replicaSet=rs0`).
 
 * Ver logs: `kubectl logs job/products-ms-migrate` (el Job se borra al terminar bien; si falla queda para revisarlo)
 * Aplicar: `helm upgrade --install syner ./syner`
+
+## Actualizar a una nueva versión
+Los Deployments usan las imágenes sin tag (`:latest`), así que `helm upgrade` no cambia el spec de los pods y **no los recrea**: siguen con la imagen vieja. Para desplegar código nuevo:
+1. Push de los submódulos cambiados a `main` y esperar a que CI publique `latest` (app y `-migrate`).
+2. Aplicar el chart (topología de RabbitMQ, templates y Jobs de migración):
+   ```
+   helm upgrade --install syner ./k8s/syner --timeout 10m
+   ```
+3. Recrear los pods para que bajen la imagen nueva (`latest` usa `imagePullPolicy: Always`):
+   ```
+   kubectl rollout restart deployment orders-ms products-ms syner-app   # solo los que cambiaron
+   kubectl rollout restart deployment                                    # o todos
+   ```
 
 ## Bajar / apagar el despliegue
 

@@ -17,6 +17,21 @@ spec:
       labels:
         app: orders-ms
     spec:
+      # The migration Job is a post-install/post-upgrade hook, so a new pod can boot
+      # before its schema change is applied: Prisma selects every column (e.g. alert_id),
+      # so purchase order queries fail and alert.created events end up in the DLQ.
+      # Waits (with the migrate image, which has the CLI and the migrations) until
+      # prisma migrate status reports no pending migrations (exit 0)
+      initContainers:
+      - name: wait-for-schema
+        image: {{ .Values.migrations.imageRepository }}/syner-orders-ms-migrate:{{ .Values.migrations.imageTag }}
+        command: ["sh", "-c", "until pnpm prisma migrate status > /dev/null 2>&1; do echo 'waiting for orders-ms-migrate'; sleep 5; done"]
+        env:
+        - name: MIGRATE_DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: orders-ms
+              key: MIGRATE_DATABASE_URL
       containers:
       - image: spadilla117/syner-orders-ms
         name: syner-orders-ms
