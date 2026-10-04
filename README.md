@@ -219,6 +219,17 @@ docker compose -f docker-compose.prod.yml run --rm --entrypoint certbot certbot 
 curl -I https://<IP>
 ```
 
+### Actualizar un servicio en el VPS
+
+El CI publica la imagen `latest` en Docker Hub solo con un push a `main` (la ejecución manual desde Actions solo compila y corre los tests). Haz push primero en el sub-módulo y después en la raíz, espera a que el CI termine en verde y en el VPS baja la imagen nueva y recrea solo ese contenedor:
+
+```bash
+docker compose -f docker-compose.prod.yml pull syner-app
+docker compose -f docker-compose.prod.yml up -d syner-app
+```
+
+Cambia `syner-app` por el servicio que actualizaste (`client-gateway`, `orders-ms`, …). En products-ms, orders-ms, finance-ms y auth-ms, `up -d` también corre antes su job `*-migrate`, que se descarga solo (`pull_policy: always`). Si cambió `docker-compose.prod.yml` u otro archivo de la raíz, haz antes `git pull` en el VPS.
+
 ## Mensajes fallidos (DLQ)
 
 Un mensaje de la saga que no se puede procesar (payload inválido o error repetido) termina en su cola `.dlq`. Para revisarlo o reintentarlo:
