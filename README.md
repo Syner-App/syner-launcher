@@ -206,7 +206,8 @@ El certificado de IP solo existe con el perfil `shortlived` y dura unos 6 días.
    ```bash
    docker compose -f docker-compose.prod.yml pull
    ./init-cert.sh --staging   # opcional: prueba contra staging, sin gastar el rate limit
-   rm -rf certbot              # solo si probaste con --staging
+   docker compose -f docker-compose.prod.yml stop certbot nginx   # solo si probaste con --staging
+   sudo rm -rf certbot         # los archivos son de root (los crea el contenedor)
    ./init-cert.sh
    ```
 
